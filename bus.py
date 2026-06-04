@@ -4,7 +4,9 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 import json
 from geopy.distance import geodesic  # <--- 이 부분이 반드시 필요합니다!
-from config import API_KEY, CITY_CODE 
+
+API_KEY = st.secrets["API_KEY"]
+CITY_CODE = st.secrets["CITY_CODE"]
 
 st.set_page_config(page_title="진주 BIS 관제", layout="centered")
 
