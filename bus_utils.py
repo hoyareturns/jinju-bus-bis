@@ -4,11 +4,11 @@ from datetime import datetime, timedelta
 import qrcode
 from io import BytesIO
 import time
+import math
 
 def get_bus_location(bus_no, route_id, api_key, city_code, retries=2):
     url = f"http://apis.data.go.kr/1613000/BusLcInfoInqireService/getRouteAcctoBusLcList?serviceKey={api_key}&cityCode={city_code}&routeId={route_id}&numOfRows=10&_type=xml"
     
-    # 실패 시 retries 횟수만큼 재시도하는 루프
     for attempt in range(retries + 1):
         try:
             res = requests.get(url, timeout=3)
@@ -19,12 +19,10 @@ def get_bus_location(bus_no, route_id, api_key, city_code, retries=2):
                 return {
                     "curr": item.find('nodenm').text,
                     "ord": int(item.find('nodeord').text),
-                    "last_time": kst_now.strftime("%H:%M:%S") # 초 단위 추가
+                    "last_time": kst_now.strftime("%H:%M:%S")
                 }
         except:
             pass
-        
-        # 실패 시 0.5초 대기 후 다시 시도
         if attempt < retries:
             time.sleep(0.5)
             
@@ -38,3 +36,13 @@ def get_qr_image(url):
     buf = BytesIO()
     img.save(buf)
     return buf
+
+def get_bearing(lat1, lon1, lat2, lon2):
+    # 두 좌표 사이의 방위각(각도)을 계산하여 화살표 방향을 구합니다.
+    lat1, lon1, lat2, lon2 = map(math.radians, [float(lat1), float(lon1), float(lat2), float(lon2)])
+    dlon = lon2 - lon1
+    x = math.sin(dlon) * math.cos(lat2)
+    y = math.cos(lat1) * math.sin(lat2) - (math.sin(lat1) * math.cos(lat2) * math.cos(dlon))
+    initial_bearing = math.atan2(x, y)
+    initial_bearing = math.degrees(initial_bearing)
+    return (initial_bearing + 360) % 360
