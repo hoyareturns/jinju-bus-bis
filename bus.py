@@ -16,37 +16,40 @@ def load_bus_data():
         return json.load(f)
 
 bus_db = load_bus_data()
-st.title("금산버스")
 
-# URL 파라미터 및 기본값 설정 (금산우체국 초기화 반영)
 query_params = st.query_params
 default_buses = query_params.get("buses", "360, 361, 362, 363")
+# 목표 정류장 하드코딩 (없으면 무조건 금산우체국)
 default_ref = query_params.get("ref", "금산우체국/금산푸르지오2단지")
 
-target_input = st.text_input("버스번호 (쉼표 구분):", value=default_buses)
+# --- 사이드바 설정 영역 ---
+st.sidebar.write("휴대폰 접속 QR")
+current_qr_url = f"{BASE_URL}?buses={urllib.parse.quote(default_buses)}&ref={urllib.parse.quote(default_ref)}"
+st.sidebar.image(get_qr_image(current_qr_url))
+st.sidebar.markdown("---")
 
-# 정류장 검색 기능
-search_term = st.text_input("정류장 검색어 입력:")
+target_input = st.sidebar.text_input("버스번호 (쉼표 구분):", value=default_buses)
+
+search_term = st.sidebar.text_input("정류장 검색어 입력:")
 all_nodes = sorted(list(set(s['nodenm'] for bus in bus_db.values() for route in bus.values() for s in route)))
 filtered_nodes = [n for n in all_nodes if search_term in n] if search_term else all_nodes
 
-# 선택 리스트 구성
 options = ["선택 안함"] + filtered_nodes
+# 리스트에 있으면 그 인덱스를, 없으면 0을 반환하여 강제 셋팅
 ref_index = options.index(default_ref) if default_ref in options else 0
-ref_name = st.selectbox("목표 정류장 선택:", options, index=ref_index)
+ref_name = st.sidebar.selectbox("목표 정류장 선택:", options, index=ref_index)
 
-# 보기 모드 및 새로고침 버튼 (순서 배치 반영)
-mode = st.radio("보기 모드:", ["버스 위치 추적", "경유 버스 목록", "노선 순서 보기"], horizontal=True)
+mode = st.sidebar.radio("보기 모드:", ["버스 위치 추적", "경유 버스 목록", "노선 순서 보기"])
 
-if st.button("새로고침"):
+if st.sidebar.button("새로고침"):
     st.rerun()
 
+# URL 파라미터 업데이트
 st.query_params["buses"] = target_input
 st.query_params["ref"] = ref_name
 
-current_qr_url = f"{BASE_URL}?buses={urllib.parse.quote(target_input)}&ref={urllib.parse.quote(ref_name)}"
-st.sidebar.image(get_qr_image(current_qr_url))
-
+# --- 메인 화면 영역 ---
+st.title("금산버스")
 st.markdown("---")
 
 target_buses = [b.strip() for b in target_input.split(",") if b.strip()]
@@ -55,11 +58,11 @@ if mode == "버스 위치 추적":
     for bus_no in target_buses:
         if bus_no not in bus_db: continue
         
-        # 상행/하행 모든 노선을 확인하여 버스를 찾음
         status = None
         active_nodes = None
         for route_id, route_nodes in bus_db[bus_no].items():
-            loc_data = get_bus_location(bus_no, route_id, API_KEY, CITY_CODE)
+            # 통신 시 retries=2 옵션으로 2번 더 재확인 수행
+            loc_data = get_bus_location(bus_no, route_id, API_KEY, CITY_CODE, retries=2)
             if loc_data:
                 status = loc_data
                 active_nodes = route_nodes
@@ -72,9 +75,8 @@ if mode == "버스 위치 추적":
             st.write(f"다음 : {next_node}")
             info = get_target_info(active_nodes, status['ord'], ref_name, bus_db)
             if info: st.write(info)
-            st.caption(f"기준시간 : {status['last_time']}")
+            st.caption(f"확인 시간 : {status['last_time']}")
         else:
-            # 대기중 문구 변경
             st.write(f"**{bus_no}번** : 현재 정보 확인 불가")
         st.markdown("---")
 
@@ -84,11 +86,9 @@ elif mode == "경유 버스 목록":
         st.write(f"[{ref_name}] 경유 버스:")
         st.write(f"{', '.join(buses)}")
 
-# 누락되었던 노선 순서 보기 기능 복구
 elif mode == "노선 순서 보기":
     for bus_no in target_buses:
         if bus_no in bus_db:
-            # 첫 번째 노선 기준 전체 정류장 출력
             nodes = list(bus_db[bus_no].values())[0]
             sorted_nodes = get_sorted_route(nodes)
             

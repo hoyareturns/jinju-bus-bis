@@ -17,7 +17,12 @@ def get_target_info(nodes, curr_ord, ref_name, bus_db):
     
     if target_node:
         dist = int(target_node['nodeord']) - curr_ord
-        if dist == 0: return f"목표 도착 [{ref_name}]"
-        elif dist > 0: return f"목표까지 : {dist}정거장 남음 [{ref_name}]"
-        else: return f"이미 지남 [{ref_name}]"
+        if dist == 0: 
+            return f"목표 도착 [{ref_name}]"
+        elif dist > 0: 
+            # 1정거장당 약 2분 소요로 단순 계산
+            eta_mins = dist * 2
+            return f"목표까지 : {dist}정거장 남음 (약 {eta_mins}분 후 예상) [{ref_name}]"
+        else: 
+            return f"이미 지남 [{ref_name}]"
     return ""
