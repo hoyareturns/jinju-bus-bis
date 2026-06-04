@@ -38,7 +38,6 @@ def get_qr_image(url):
     return buf
 
 def get_bearing(lat1, lon1, lat2, lon2):
-    # 두 좌표 사이의 방위각(각도)을 계산하여 화살표 방향을 구합니다.
     lat1, lon1, lat2, lon2 = map(math.radians, [float(lat1), float(lon1), float(lat2), float(lon2)])
     dlon = lon2 - lon1
     x = math.sin(dlon) * math.cos(lat2)

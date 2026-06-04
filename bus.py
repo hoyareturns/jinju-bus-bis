@@ -20,22 +20,20 @@ def load_bus_data():
 bus_db = load_bus_data()
 
 query_params = st.query_params
-default_buses = query_params.get("buses", "360, 361, 362, 363")
+# 버스 번호 초기값 변경
+default_buses = query_params.get("buses", "10, 160, 360, 362, 363")
+# 목표 정류장 초기값 고정
 default_ref = query_params.get("ref", "금산우체국/금산푸르지오2단지")
 
-# --- 사이드바 영역 ---
-# 1. 최상단 새로고침 버튼
-if st.sidebar.button("새로고침"):
-    st.rerun()
-
-# 2. 타이틀 및 바코드
-st.sidebar.title("금산버스")
+# ==========================================
+# 사이드바 (설정 전용 공간)
+# ==========================================
+st.sidebar.title("금산버스 설정")
 st.sidebar.write("휴대폰 접속 QR")
 current_qr_url = f"{BASE_URL}?buses={urllib.parse.quote(default_buses)}&ref={urllib.parse.quote(default_ref)}"
 st.sidebar.image(get_qr_image(current_qr_url))
 st.sidebar.markdown("---")
 
-# 3. 설정 및 제어판
 target_input = st.sidebar.text_input("버스번호 (쉼표 구분):", value=default_buses)
 
 search_term = st.sidebar.text_input("정류장 검색어 입력:")
@@ -51,14 +49,21 @@ mode = st.sidebar.radio("보기 모드:", ["버스 위치 추적", "경유 버�
 st.query_params["buses"] = target_input
 st.query_params["ref"] = ref_name
 
-# --- 메인 화면 영역 ---
 target_buses = [b.strip() for b in target_input.split(",") if b.strip()]
 
+# ==========================================
+# 메인 화면 (정보 표시 영역)
+# ==========================================
+st.title("금산버스 관제")
+
+if st.button("새로고침"):
+    st.rerun()
+
+st.markdown("---")
+
 if mode == "버스 위치 추적":
-    # 진주시 중심부 좌표로 지도 초기화
-    m = folium.Map(location=[35.1800, 128.1076], zoom_start=12)
+    m = folium.Map(location=[35.1800, 128.1076], zoom_start=12, tiles="CartoDB positron")
     
-    # 목표 정류장 빨간 깃발 표시
     if ref_name != "선택 안함":
         ref_coords = next(((s['gpslati'], s['gpslong']) for bus in bus_db.values() for r in bus.values() for s in r if s['nodenm'] == ref_name), None)
         if ref_coords:
@@ -67,6 +72,8 @@ if mode == "버스 위치 추적":
                 popup=ref_name,
                 icon=folium.Icon(color='red', icon='flag', prefix='fa')
             ).add_to(m)
+
+    bus_results = {}
 
     for bus_no in target_buses:
         if bus_no not in bus_db: continue
@@ -80,20 +87,13 @@ if mode == "버스 위치 추적":
                 active_nodes = route_nodes
                 break
         
+        bus_results[bus_no] = (status, active_nodes)
+        
         if status:
             curr_ord = status['ord']
             curr_node = next((n for n in active_nodes if int(n['nodeord']) == curr_ord), None)
             next_node_data = next((n for n in active_nodes if int(n['nodeord']) == curr_ord + 1), None)
-            next_node_name = next_node_data['nodenm'] if next_node_data else "운행종료"
             
-            st.write(f"[{bus_no}번]")
-            st.write(f"현재 : {status['curr']}")
-            st.write(f"다음 : {next_node_name}")
-            info = get_target_info(active_nodes, curr_ord, ref_name, bus_db)
-            if info: st.write(info)
-            st.caption(f"확인 시간 : {status['last_time']}")
-            
-            # 지도에 버스 위치, 번호, 진행 방향 화살표 마커 찍기
             if curr_node:
                 lat = float(curr_node['gpslati'])
                 lon = float(curr_node['gpslong'])
@@ -106,20 +106,37 @@ if mode == "버스 위치 추적":
                     bearing = get_bearing(lat, lon, n_lat, n_lon)
                     
                 html = f"""
-                <div style="background-color: {color}; color: white; border-radius: 5px; padding: 2px 5px; font-size: 12px; font-weight: bold; text-align: center; border: 1px solid white; box-shadow: 1px 1px 3px rgba(0,0,0,0.5); white-space: nowrap;">
-                    {bus_no}번 <div style="transform: rotate({bearing}deg); display: inline-block;">&uarr;</div>
+                <div style="background-color: {color}; color: white; border-radius: 4px; border: 1px solid white; box-shadow: 1px 1px 3px rgba(0,0,0,0.4); width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: bold; font-family: sans-serif;">
+                    {bus_no} <span style="transform: rotate({bearing}deg); margin-left: 3px;">&uarr;</span>
                 </div>
                 """
                 folium.Marker(
                     location=[lat, lon],
-                    icon=folium.DivIcon(html=html, icon_anchor=(20, 10))
+                    icon=folium.DivIcon(html=html, icon_size=(70, 26), icon_anchor=(35, 13))
                 ).add_to(m)
+                
+    st_folium(m, width="100%", height=350, returned_objects=[])
+    st.markdown("---")
+
+    for bus_no in target_buses:
+        if bus_no not in bus_results:
+            continue
+            
+        status, active_nodes = bus_results[bus_no]
+        if status:
+            curr_ord = status['ord']
+            next_node_data = next((n for n in active_nodes if int(n['nodeord']) == curr_ord + 1), None)
+            next_node_name = next_node_data['nodenm'] if next_node_data else "운행종료"
+            
+            st.write(f"[{bus_no}번]")
+            st.write(f"현재 : {status['curr']}")
+            st.write(f"다음 : {next_node_name}")
+            info = get_target_info(active_nodes, curr_ord, ref_name, bus_db)
+            if info: st.write(info)
+            st.caption(f"확인 시간 : {status['last_time']}")
         else:
             st.write(f"[{bus_no}번] 현재 정보 확인 불가")
         st.markdown("---")
-        
-    # 버스 위치 추적 모드일 때 메인 하단에 지도 출력
-    st_folium(m, width="100%", height=400, returned_objects=[])
 
 elif mode == "경유 버스 목록":
     if ref_name != "선택 안함":

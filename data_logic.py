@@ -27,7 +27,6 @@ def get_target_info(nodes, curr_ord, ref_name, bus_db):
     return ""
 
 def get_color_by_bus(bus_no):
-    # 버스 번호별로 고유한 마커 색상을 할당합니다.
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
     hash_val = int(hashlib.md5(bus_no.encode()).hexdigest(), 16)
     return colors[hash_val % len(colors)]
