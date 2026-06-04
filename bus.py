@@ -20,9 +20,7 @@ def load_bus_data():
 bus_db = load_bus_data()
 
 query_params = st.query_params
-# 버스 번호 초기값 변경
 default_buses = query_params.get("buses", "10, 160, 360, 362, 363")
-# 목표 정류장 초기값 고정
 default_ref = query_params.get("ref", "금산우체국/금산푸르지오2단지")
 
 # ==========================================
@@ -54,8 +52,7 @@ target_buses = [b.strip() for b in target_input.split(",") if b.strip()]
 # ==========================================
 # 메인 화면 (정보 표시 영역)
 # ==========================================
-st.title("금산버스 관제")
-
+# 1. 텍스트 타이틀 삭제 및 최상단 새로고침 버튼 배치
 if st.button("새로고침"):
     st.rerun()
 
@@ -105,14 +102,24 @@ if mode == "버스 위치 추적":
                     n_lon = float(next_node_data['gpslong'])
                     bearing = get_bearing(lat, lon, n_lat, n_lon)
                     
+                # 2. 마커 디자인 변경: 위치를 나타내는 '점'과 정보를 보여주는 '말풍선' 분리
                 html = f"""
-                <div style="background-color: {color}; color: white; border-radius: 4px; border: 1px solid white; box-shadow: 1px 1px 3px rgba(0,0,0,0.4); width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: bold; font-family: sans-serif;">
-                    {bus_no} <span style="transform: rotate({bearing}deg); margin-left: 3px;">&uarr;</span>
+                <div style="position: relative;">
+                    <div style="position: absolute; left: -6px; top: -6px; width: 12px; height: 12px; background-color: {color}; border-radius: 50%; border: 2px solid white; box-shadow: 1px 1px 3px rgba(0,0,0,0.5); z-index: 2;"></div>
+                    
+                    <div style="position: absolute; left: 10px; top: -18px; background-color: white; border: 2px solid {color}; border-radius: 5px; padding: 4px 6px; box-shadow: 2px 2px 4px rgba(0,0,0,0.3); white-space: nowrap; z-index: 1;">
+                        <div style="font-size: 13px; font-weight: bold; color: {color}; text-align: left;">
+                            {bus_no} <span style="transform: rotate({bearing}deg); display: inline-block; margin-left: 2px; color: black;">&uarr;</span>
+                        </div>
+                        <div style="font-size: 11px; color: #333; margin-top: 2px; font-weight: bold;">
+                            {status['curr']}
+                        </div>
+                    </div>
                 </div>
                 """
                 folium.Marker(
                     location=[lat, lon],
-                    icon=folium.DivIcon(html=html, icon_size=(70, 26), icon_anchor=(35, 13))
+                    icon=folium.DivIcon(html=html)
                 ).add_to(m)
                 
     st_folium(m, width="100%", height=350, returned_objects=[])
