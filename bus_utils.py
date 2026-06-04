@@ -15,14 +15,14 @@ def get_bus_location(bus_no, route_id, api_key, city_code):
             return {
                 "curr": item.find('nodenm').text,
                 "ord": int(item.find('nodeord').text),
-                "last_time": kst_now.strftime("%H시 %M분")
+                "last_time": kst_now.strftime("%H:%M")
             }
     except:
         pass
     return None
 
 def get_qr_image(url):
-    qr = qrcode.QRCode(box_size=5, border=2)
+    qr = qrcode.QRCode(box_size=4, border=1)
     qr.add_data(url)
     qr.make(fit=True)
     img = qr.make_image(fill_color="black", back_color="white")
