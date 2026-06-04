@@ -8,6 +8,9 @@ def find_buses_at_node(bus_db, node_name):
                 found_buses.add(b_no)
     return sorted(list(found_buses), key=lambda x: str(x))
 
+def get_sorted_route(nodes):
+    return sorted(nodes, key=lambda x: int(x['nodeord']))
+
 def get_target_info(nodes, curr_ord, ref_name, bus_db):
     if ref_name == "선택 안함": return ""
     target_node = next((n for n in nodes if n['nodenm'] == ref_name), None)
