@@ -3,7 +3,7 @@ import json
 import urllib.parse
 import folium
 from streamlit_folium import st_folium
-from bus_utils import get_bus_location, get_qr_image, get_bearing
+from bus_utils import get_bus_location, get_qr_image, get_bearing, get_arrival_info
 from data_logic import find_buses_at_node, get_sorted_route, get_target_info, get_color_by_bus
 
 API_KEY = st.secrets["API_KEY"]
@@ -58,13 +58,32 @@ if mode == "버스 위치 추적":
         m = folium.Map(location=[35.1800, 128.1076], zoom_start=12, tiles="CartoDB positron")
         
         # 목표 지점 (빨간 깃발)
+        target_node_id_for_api = None
         if ref_name != "선택 안함":
-            ref_coords = next(((s['gpslati'], s['gpslong']) for bus in bus_db.values() for r in bus.values() for s in r if s['nodenm'] == ref_name), None)
-            if ref_coords:
+            # 전체 노선 데이터를 뒤져서 목표 정류장의 좌표와 nodeid를 찾습니다
+            ref_node_data = next((s for bus in bus_db.values() for r in bus.values() for s in r if s['nodenm'] == ref_name), None)
+            
+            if ref_node_data:
+                lat, lon = float(ref_node_data['gpslati']), float(ref_node_data['gpslong'])
+                # nodeid가 json 파일에 있으면 가져옵니다 (대소문자 방어 로직 적용)
+                target_node_id_for_api = ref_node_data.get('nodeid', ref_node_data.get('nodeId'))
+                
                 folium.Marker(
-                    location=[float(ref_coords[0]), float(ref_coords[1])],
+                    location=[lat, lon],
                     popup=ref_name,
                     icon=folium.Icon(color='red', icon='flag', prefix='fa')
+                ).add_to(m)
+                
+                html_dest = f"""
+                <div style="position: relative; width: 200px; text-align: center; left: -100px; top: 10px;">
+                    <div style="background-color: white; border: 2px solid #d32f2f; border-radius: 5px; padding: 3px 6px; display: inline-block; font-size: 12px; font-weight: bold; color: #d32f2f; box-shadow: 1px 1px 4px rgba(0,0,0,0.4);">
+                        {ref_name}
+                    </div>
+                </div>
+                """
+                folium.Marker(
+                    location=[lat, lon],
+                    icon=folium.DivIcon(html=html_dest)
                 ).add_to(m)
 
         bus_results = {}
@@ -99,7 +118,6 @@ if mode == "버스 위치 추적":
                         n_lon = float(next_node_data['gpslong'])
                         bearing = get_bearing(lat, lon, n_lat, n_lon)
                     
-                    # --- 마커 디자인 개선 (점+화살표 통합 & 라벨 상단 오프셋) ---
                     html = f"""
                     <div style="position: relative; width: 40px; height: 40px;">
                         <div style="position: absolute; left: 14px; top: 14px; width: 14px; height: 14px; background-color: {color}; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10;">
@@ -125,16 +143,35 @@ if mode == "버스 위치 추적":
         for bus_no in target_buses:
             if bus_no not in bus_results: continue
             status, active_nodes = bus_results[bus_no]
+            
             if status:
                 curr_ord = status['ord']
                 next_node_data = next((n for n in active_nodes if int(n['nodeord']) == curr_ord + 1), None)
                 next_node_name = next_node_data['nodenm'] if next_node_data else "운행종료"
+                
                 st.write(f"[{bus_no}번]")
                 st.write(f"현재 : {status['curr']}")
                 st.write(f"다음 : {next_node_name}")
-                info = get_target_info(active_nodes, curr_ord, ref_name, bus_db)
-                if info: st.write(info)
+                
+                # --- ETA 획득 및 Fallback 로직 ---
+                eta_displayed = False
+                
+                # 1. 목표 정류장이 있고, nodeid가 존재하면 공공데이터 API 먼저 시도
+                if ref_name != "선택 안함" and target_node_id_for_api:
+                    eta_text = get_arrival_info(target_node_id_for_api, bus_no, API_KEY, CITY_CODE)
+                    if eta_text:
+                        st.write(f"목표까지 : {eta_text} [{ref_name}]")
+                        eta_displayed = True
+                
+                # 2. 통신에 실패했거나 nodeid가 없으면 기존 정거장 계산 로직 사용
+                if not eta_displayed:
+                    info = get_target_info(active_nodes, curr_ord, ref_name, bus_db)
+                    if info: st.write(info)
+                    
                 st.caption(f"확인 시간 : {status['last_time']}")
+                st.markdown("---")
+            else:
+                st.write(f"[{bus_no}번] 현재 정보 확인 불가")
                 st.markdown("---")
 
 elif mode == "경유 버스 목록":

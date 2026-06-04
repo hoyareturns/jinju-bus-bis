@@ -8,7 +8,6 @@ import math
 def get_bus_location(bus_no, route_id, api_key, city_code):
     url = f"http://apis.data.go.kr/1613000/BusLcInfoInqireService/getRouteAcctoBusLcList?serviceKey={api_key}&cityCode={city_code}&routeId={route_id}&numOfRows=10&_type=xml"
     try:
-        # 고속 로딩을 위해 타임아웃 0.5초 설정
         res = requests.get(url, timeout=0.5)
         root = ET.fromstring(res.content)
         item = root.find('.//item')
@@ -23,6 +22,24 @@ def get_bus_location(bus_no, route_id, api_key, city_code):
         pass
     return None
 
+def get_arrival_info(node_id, bus_no, api_key, city_code):
+    url = f"http://apis.data.go.kr/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList?serviceKey={api_key}&cityCode={city_code}&nodeId={node_id}&_type=xml"
+    try:
+        res = requests.get(url, timeout=0.5)
+        root = ET.fromstring(res.content)
+        for item in root.findall('.//item'):
+            routeno = item.find('routeno')
+            if routeno is not None and str(routeno.text) == str(bus_no):
+                arrtime = item.find('arrtime')
+                if arrtime is not None:
+                    eta_mins = int(arrtime.text) // 60
+                    if eta_mins == 0:
+                        return "잠시 후 도착 예정"
+                    return f"약 {eta_mins}분 후 도착 예정"
+    except:
+        pass
+    return None
+
 def get_qr_image(url):
     qr = qrcode.QRCode(box_size=4, border=1)
     qr.add_data(url)
@@ -33,7 +50,6 @@ def get_qr_image(url):
     return buf
 
 def get_bearing(lat1, lon1, lat2, lon2):
-    # 두 지점 사이의 방위각을 계산합니다.
     lat1, lon1, lat2, lon2 = map(math.radians, [float(lat1), float(lon1), float(lat2), float(lon2)])
     dlon = lon2 - lon1
     x = math.sin(dlon) * math.cos(lat2)
