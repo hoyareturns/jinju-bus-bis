@@ -23,17 +23,17 @@ def get_target_info(nodes, curr_ord, ref_name, bus_db):
     if target_node:
         dist = int(target_node['nodeord']) - curr_ord
         if dist == 0:
-            return f"✅ 목표: {ref_name} (현재 정류장)"
+            return f"목표: {ref_name} (현재 정류장)"
         elif dist > 0:
-            return f"🎯 목표: {ref_name} ({dist}정거장 전)"
+            return f"목표: {ref_name} ({dist}정거장 전)"
         else:
-            return f"🏁 목표: {ref_name} (이미 지남)"
+            return f"목표: {ref_name} (이미 지남)"
     else:
         # 노선에 목표가 없을 경우 좌표로 가장 가까운 정류장 찾기
         ref_coords = next(((s['gpslati'], s['gpslong']) for bus in bus_db.values() for r in bus.values() for s in r if s['nodenm'] == ref_name), None)
         if ref_coords:
             nearest = min(nodes, key=lambda n: geodesic((float(n['gpslati']), float(n['gpslong'])), ref_coords).meters)
             dist = int(nearest['nodeord']) - curr_ord
-            return f"📍 가까운 목표: {nearest['nodenm']} ({abs(dist)}정거장 차이)"
+            return f"가까운 목표: {nearest['nodenm']} ({abs(dist)}정거장 차이)"
     
     return ""
