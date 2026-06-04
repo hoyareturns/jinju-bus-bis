@@ -2,8 +2,9 @@ import streamlit as st
 import json
 import urllib.parse
 import folium
+import asyncio
 from streamlit_folium import st_folium
-from bus_utils import get_bus_location, get_qr_image, get_bearing, get_arrival_info
+from bus_utils import get_all_bus_locations, get_qr_image, get_bearing, get_arrival_info
 from data_logic import find_buses_at_node, get_sorted_route, get_target_info, get_color_by_bus
 
 API_KEY = st.secrets["API_KEY"]
@@ -19,6 +20,11 @@ def load_bus_data():
 
 bus_db = load_bus_data()
 
+# 일일 트래픽 초과 방지 및 로딩 속도 개선을 위한 30초 캐싱
+@st.cache_data(ttl=30)
+def fetch_locations_cached(targets, api_key, city_code):
+    return asyncio.run(get_all_bus_locations(targets, api_key, city_code))
+
 query_params = st.query_params
 default_buses = query_params.get("buses", "10, 160, 360, 362, 363")
 default_ref = query_params.get("ref", "금산우체국/금산푸르지오2단지")
@@ -27,163 +33,127 @@ default_ref = query_params.get("ref", "금산우체국/금산푸르지오2단지
 st.sidebar.title("금산버스 설정")
 st.sidebar.write("휴대폰 접속 QR")
 current_qr_url = f"{BASE_URL}?buses={urllib.parse.quote(default_buses)}&ref={urllib.parse.quote(default_ref)}"
-st.sidebar.image(get_qr_image(current_qr_url))
-st.sidebar.markdown("---")
+qr_bytes = get_qr_image(current_qr_url)
+st.sidebar.image(qr_bytes, caption="현재 설정으로 접속")
 
-target_input = st.sidebar.text_input("버스번호 (쉼표 구분):", value=default_buses)
+input_buses = st.sidebar.text_input("조회할 버스 번호 (쉼표로 구분)", value=default_buses)
+target_buses = [b.strip() for b in input_buses.split(',') if b.strip()]
 
-search_term = st.sidebar.text_input("정류장 검색어 입력:")
-all_nodes = sorted(list(set(s['nodenm'] for bus in bus_db.values() for route in bus.values() for s in route)))
-filtered_nodes = [n for n in all_nodes if search_term in n] if search_term else all_nodes
+all_nodes = set()
+for b in target_buses:
+    if b in bus_db:
+        for route in bus_db[b].values():
+            for node in route:
+                all_nodes.add(node['nodenm'])
+all_nodes_sorted = ["선택 안함"] + sorted(list(all_nodes))
 
-options = ["선택 안함"] + filtered_nodes
-ref_index = options.index(default_ref) if default_ref in options else 0
-ref_name = st.sidebar.selectbox("목표 정류장 선택:", options, index=ref_index)
+ref_idx = all_nodes_sorted.index(default_ref) if default_ref in all_nodes_sorted else 0
+ref_name = st.sidebar.selectbox("목표 정류장 선택", all_nodes_sorted, index=ref_idx)
 
-mode = st.sidebar.radio("보기 모드:", ["버스 위치 추적", "경유 버스 목록", "노선 순서 보기"])
+mode = st.sidebar.radio("모드 선택", ["지도/상태 보기", "경유 버스 목록", "노선 상세 정보"])
 
-st.query_params["buses"] = target_input
-st.query_params["ref"] = ref_name
+# --- 메인 화면 ---
+st.title("🚌 금산 버스 실시간 알리미")
+st.caption("※ 공공데이터 API 특성상 실제 위치보다 약 30초~1분 지연될 수 있습니다.")
 
-target_buses = [b.strip() for b in target_input.split(",") if b.strip()]
-
-# --- 메인 화면 영역 ---
-if st.button("새로고침"):
-    st.rerun()
-
-st.markdown("---")
-
-if mode == "버스 위치 추적":
-    with st.spinner("최신 위치 정보를 가져오는 중..."):
-        m = folium.Map(location=[35.1800, 128.1076], zoom_start=12, tiles="CartoDB positron")
+if mode == "지도/상태 보기":
+    map_center = [35.18, 128.10] # 진주 기본 좌표 
+    m = folium.Map(location=map_center, zoom_start=12)
+    
+    # 비동기로 모든 버스 위치 한 번에 조회
+    targets = []
+    for bus_no in target_buses:
+        if bus_no in bus_db:
+            route_id = list(bus_db[bus_no].keys())[0]
+            targets.append((bus_no, route_id))
+            
+    with st.spinner("실시간 버스 정보를 가져오는 중..."):
+        bus_results = fetch_locations_cached(targets, API_KEY, CITY_CODE)
+    
+    st.markdown("### 🚦 현재 버스 운행 상태")
+    
+    for result in bus_results:
+        bus_no, buses_active, status_msg = result
+        route_id = list(bus_db[bus_no].keys())[0]
+        active_nodes = get_sorted_route(bus_db[bus_no][route_id])
         
-        # 목표 지점 (빨간 깃발)
+        # 목표 정류장 node_id 찾기
         target_node_id_for_api = None
         if ref_name != "선택 안함":
-            # 전체 노선 데이터를 뒤져서 목표 정류장의 좌표와 nodeid를 찾습니다
-            ref_node_data = next((s for bus in bus_db.values() for r in bus.values() for s in r if s['nodenm'] == ref_name), None)
+            target_node = next((n for n in active_nodes if n['nodenm'] == ref_name), None)
+            if target_node:
+                target_node_id_for_api = target_node.get('nodeid')
+
+        # 1. 예외 상태 처리 (운행종료, 타임아웃, 통신오류)
+        if status_msg != "정상":
+            st.error(f"[{bus_no}번] {status_msg}")
+            st.markdown("---")
+            continue
             
-            if ref_node_data:
-                lat, lon = float(ref_node_data['gpslati']), float(ref_node_data['gpslong'])
-                # nodeid가 json 파일에 있으면 가져옵니다 (대소문자 방어 로직 적용)
-                target_node_id_for_api = ref_node_data.get('nodeid', ref_node_data.get('nodeId'))
+        # 2. 정상 운행 중인 버스 리스트 렌더링
+        for idx, bus in enumerate(buses_active):
+            curr_ord = bus['ord']
+            
+            # 방향성에 따른 상태 텍스트, 색상 판별
+            info_text, marker_color, direction_icon = get_target_info(active_nodes, curr_ord, ref_name)
+            
+            # Streamlit 텍스트 출력 (다가옴은 🔴, 멀어짐은 ⚪)
+            status_icon = "🔴" if marker_color == "red" else "⚪" if marker_color == "gray" else "🔵"
+            st.write(f"**[{bus_no}번]** - {bus['curr']} 통과 {status_icon}")
+            
+            eta_displayed = False
+            # API를 통한 도착 예정 시간 우선 시도 (가장 첫 번째 버스에 대해서만)
+            if idx == 0 and ref_name != "선택 안함" and target_node_id_for_api and marker_color == "red":
+                eta_text = get_arrival_info(target_node_id_for_api, bus_no, API_KEY, CITY_CODE)
+                if eta_text:
+                    st.write(f"목표까지 : {eta_text} [{ref_name}]")
+                    eta_displayed = True
+                    
+            # API 실패 또는 멀어지는 버스일 경우 정거장 계산 표시
+            if not eta_displayed and info_text:
+                st.write(info_text)
                 
-                folium.Marker(
-                    location=[lat, lon],
-                    popup=ref_name,
-                    icon=folium.Icon(color='red', icon='flag', prefix='fa')
-                ).add_to(m)
+            st.caption(f"확인 시간 : {bus['last_time']}")
+            
+            # Folium 지도에 마커 추가
+            curr_node = next((n for n in active_nodes if n['nodenm'] == bus['curr']), None)
+            if curr_node:
+                lat, lon = float(curr_node['gpslati']), float(curr_node['gpslong'])
                 
-                html_dest = f"""
-                <div style="position: relative; width: 200px; text-align: center; left: -100px; top: 10px;">
-                    <div style="background-color: white; border: 2px solid #d32f2f; border-radius: 5px; padding: 3px 6px; display: inline-block; font-size: 12px; font-weight: bold; color: #d32f2f; box-shadow: 1px 1px 4px rgba(0,0,0,0.4);">
-                        {ref_name}
-                    </div>
+                # 다음 정류장 방위각 계산
+                next_node = next((n for n in active_nodes if int(n['nodeord']) == curr_ord + 1), None)
+                bearing = 0
+                if next_node:
+                    n_lat, n_lon = float(next_node['gpslati']), float(next_node['gpslong'])
+                    bearing = get_bearing(lat, lon, n_lat, n_lon)
+                
+                html = f"""
+                <div style="background-color: white; border: 2px solid {marker_color}; border-radius: 5px; padding: 2px; text-align: center; white-space: nowrap; transform: rotate({bearing}deg); opacity: {'1.0' if marker_color == 'red' else '0.6'};">
+                    <div style="font-size: 14px; transform: rotate(-{bearing}deg);">🚌</div>
                 </div>
+                <div style="font-size: 12px; font-weight: bold; color: {marker_color}; text-shadow: 1px 1px white;">{bus_no}{direction_icon}</div>
                 """
                 folium.Marker(
                     location=[lat, lon],
-                    icon=folium.DivIcon(html=html_dest)
+                    icon=folium.DivIcon(html=html),
+                    tooltip=f"{bus_no}번 ({bus['curr']})"
                 ).add_to(m)
-
-        bus_results = {}
-
-        for bus_no in target_buses:
-            if bus_no not in bus_db: continue
-            
-            status = None
-            active_nodes = None
-            for route_id, route_nodes in bus_db[bus_no].items():
-                loc_data = get_bus_location(bus_no, route_id, API_KEY, CITY_CODE)
-                if loc_data:
-                    status = loc_data
-                    active_nodes = route_nodes
-                    break
-            
-            bus_results[bus_no] = (status, active_nodes)
-            
-            if status:
-                curr_ord = status['ord']
-                curr_node = next((n for n in active_nodes if int(n['nodeord']) == curr_ord), None)
-                next_node_data = next((n for n in active_nodes if int(n['nodeord']) == curr_ord + 1), None)
                 
-                if curr_node:
-                    lat = float(curr_node['gpslati'])
-                    lon = float(curr_node['gpslong'])
-                    color = get_color_by_bus(bus_no)
-                    
-                    bearing = 0
-                    if next_node_data:
-                        n_lat = float(next_node_data['gpslati'])
-                        n_lon = float(next_node_data['gpslong'])
-                        bearing = get_bearing(lat, lon, n_lat, n_lon)
-                    
-                    html = f"""
-                    <div style="position: relative; width: 40px; height: 40px;">
-                        <div style="position: absolute; left: 14px; top: 14px; width: 14px; height: 14px; background-color: {color}; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10;">
-                            <div style="transform: rotate({bearing}deg); color: white; font-size: 10px; font-weight: bold; line-height: 1;">&uarr;</div>
-                        </div>
-                        
-                        <div style="position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); background-color: white; border: 2px solid {color}; border-radius: 6px; padding: 3px 6px; box-shadow: 2px 2px 5px rgba(0,0,0,0.3); white-space: nowrap; z-index: 5;">
-                            <div style="font-size: 12px; font-weight: bold; color: {color};">{bus_no}</div>
-                            <div style="font-size: 10px; color: #333; font-weight: bold;">{status['curr']}</div>
-                        </div>
-                        
-                        <div style="position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid {color}; z-index: 4;"></div>
-                    </div>
-                    """
-                    folium.Marker(
-                        location=[lat, lon],
-                        icon=folium.DivIcon(html=html, icon_size=(40, 40), icon_anchor=(20, 20))
-                    ).add_to(m)
-                    
-        st_folium(m, width="100%", height=400, returned_objects=[])
         st.markdown("---")
 
-        for bus_no in target_buses:
-            if bus_no not in bus_results: continue
-            status, active_nodes = bus_results[bus_no]
-            
-            if status:
-                curr_ord = status['ord']
-                next_node_data = next((n for n in active_nodes if int(n['nodeord']) == curr_ord + 1), None)
-                next_node_name = next_node_data['nodenm'] if next_node_data else "운행종료"
-                
-                st.write(f"[{bus_no}번]")
-                st.write(f"현재 : {status['curr']}")
-                st.write(f"다음 : {next_node_name}")
-                
-                # --- ETA 획득 및 Fallback 로직 ---
-                eta_displayed = False
-                
-                # 1. 목표 정류장이 있고, nodeid가 존재하면 공공데이터 API 먼저 시도
-                if ref_name != "선택 안함" and target_node_id_for_api:
-                    eta_text = get_arrival_info(target_node_id_for_api, bus_no, API_KEY, CITY_CODE)
-                    if eta_text:
-                        st.write(f"목표까지 : {eta_text} [{ref_name}]")
-                        eta_displayed = True
-                
-                # 2. 통신에 실패했거나 nodeid가 없으면 기존 정거장 계산 로직 사용
-                if not eta_displayed:
-                    info = get_target_info(active_nodes, curr_ord, ref_name, bus_db)
-                    if info: st.write(info)
-                    
-                st.caption(f"확인 시간 : {status['last_time']}")
-                st.markdown("---")
-            else:
-                st.write(f"[{bus_no}번] 현재 정보 확인 불가")
-                st.markdown("---")
+    # 지도 렌더링 (모바일 터치 이슈 완화를 위해 use_container_width 적용)
+    st_folium(m, height=400, use_container_width=True, returned_objects=[])
 
 elif mode == "경유 버스 목록":
     if ref_name != "선택 안함":
         buses = find_buses_at_node(bus_db, ref_name)
         st.write(f"[{ref_name}] 경유 버스: {', '.join(buses)}")
 
-elif mode == "노선 순서 보기":
-    for bus_no in target_buses:
-        if bus_no in bus_db:
-            nodes = list(bus_db[bus_no].values())[0]
-            sorted_nodes = get_sorted_route(nodes)
-            with st.expander(f"{bus_no}번 전체 노선 보기"):
-                for n in sorted_nodes:
-                    st.write(f"{n['nodeord']}. {n['nodenm']}")
+elif mode == "노선 상세 정보":
+    selected_bus = st.selectbox("버스 번호 선택", target_buses)
+    if selected_bus in bus_db:
+        route_id = list(bus_db[selected_bus].keys())[0]
+        nodes = get_sorted_route(bus_db[selected_bus][route_id])
+        st.write(f"### {selected_bus}번 노선")
+        for n in nodes:
+            st.write(f"{n['nodeord']}. {n['nodenm']}")
