@@ -1,3 +1,4 @@
+from geopy.distance import geodesic
 import hashlib
 
 def find_buses_at_node(bus_db, node_name):

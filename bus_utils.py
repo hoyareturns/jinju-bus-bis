@@ -8,8 +8,7 @@ import math
 def get_bus_location(bus_no, route_id, api_key, city_code):
     url = f"http://apis.data.go.kr/1613000/BusLcInfoInqireService/getRouteAcctoBusLcList?serviceKey={api_key}&cityCode={city_code}&routeId={route_id}&numOfRows=10&_type=xml"
     try:
-        # API 통신 지연 방지를 위해 타임아웃 0.8초 설정
-        res = requests.get(url, timeout=0.8)
+        res = requests.get(url, timeout=0.5)
         root = ET.fromstring(res.content)
         item = root.find('.//item')
         if item is not None:
@@ -26,7 +25,7 @@ def get_bus_location(bus_no, route_id, api_key, city_code):
 def get_arrival_info(node_id, bus_no, api_key, city_code):
     url = f"http://apis.data.go.kr/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList?serviceKey={api_key}&cityCode={city_code}&nodeId={node_id}&_type=xml"
     try:
-        res = requests.get(url, timeout=0.8)
+        res = requests.get(url, timeout=0.5)
         root = ET.fromstring(res.content)
         for item in root.findall('.//item'):
             routeno = item.find('routeno')
