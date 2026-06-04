@@ -8,27 +8,19 @@ import math
 def get_bus_location(bus_no, route_id, api_key, city_code):
     url = f"http://apis.data.go.kr/1613000/BusLcInfoInqireService/getRouteAcctoBusLcList?serviceKey={api_key}&cityCode={city_code}&routeId={route_id}&numOfRows=10&_type=xml"
     try:
-        res = requests.get(url, timeout=1.0)
+        # 고속 로딩을 위해 타임아웃 0.5초 설정
+        res = requests.get(url, timeout=0.5)
         root = ET.fromstring(res.content)
         item = root.find('.//item')
         if item is not None:
             kst_now = datetime.now() + timedelta(hours=9)
-            return {"curr": item.find('nodenm').text, "ord": int(item.find('nodeord').text), "last_time": kst_now.strftime("%H:%M:%S")}
-    except: pass
-    return None
-
-def get_arrival_info(node_id, bus_no, api_key, city_code):
-    url = f"http://apis.data.go.kr/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList?serviceKey={api_key}&cityCode={city_code}&nodeId={node_id}&_type=xml"
-    try:
-        res = requests.get(url, timeout=1.0)
-        root = ET.fromstring(res.content)
-        for item in root.findall('.//item'):
-            if item.find('routeno') is not None and str(item.find('routeno').text) == str(bus_no):
-                arrtime = item.find('arrtime')
-                if arrtime is not None:
-                    eta = int(arrtime.text) // 60
-                    return "잠시 후 도착" if eta == 0 else f"{eta}분 후 도착"
-    except: pass
+            return {
+                "curr": item.find('nodenm').text,
+                "ord": int(item.find('nodeord').text),
+                "last_time": kst_now.strftime("%H:%M:%S")
+            }
+    except:
+        pass
     return None
 
 def get_qr_image(url):
@@ -41,8 +33,11 @@ def get_qr_image(url):
     return buf
 
 def get_bearing(lat1, lon1, lat2, lon2):
+    # 두 지점 사이의 방위각을 계산합니다.
     lat1, lon1, lat2, lon2 = map(math.radians, [float(lat1), float(lon1), float(lat2), float(lon2)])
     dlon = lon2 - lon1
     x = math.sin(dlon) * math.cos(lat2)
     y = math.cos(lat1) * math.sin(lat2) - (math.sin(lat1) * math.cos(lat2) * math.cos(dlon))
-    return (math.degrees(math.atan2(x, y)) + 360) % 360
+    initial_bearing = math.atan2(x, y)
+    initial_bearing = math.degrees(initial_bearing)
+    return (initial_bearing + 360) % 360
