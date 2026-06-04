@@ -7,8 +7,9 @@ from concurrent.futures import ThreadPoolExecutor
 from bus_utils import get_bus_location, get_qr_image, get_bearing, get_arrival_info
 from data_logic import find_buses_at_node, get_sorted_route, get_target_info, get_color_by_bus
 
-# 다른 모듈창에 정의된 공용 변수 호출 (모듈명은 실제 환경에 맞게 수정하세요)
-from common_vars import API_KEY, CITY_CODE, BASE_URL
+API_KEY = st.secrets["API_KEY"]
+CITY_CODE = st.secrets["CITY_CODE"]
+BASE_URL = "https://jinju-bus-bis-bpesd99kxyupdbxgsuwvzt.streamlit.app" 
 
 st.set_page_config(page_title="금산버스", layout="centered")
 
