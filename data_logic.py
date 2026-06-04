@@ -15,15 +15,11 @@ def get_sorted_route(nodes):
 def get_target_info(nodes, curr_ord, ref_name, bus_db):
     if ref_name == "선택 안함": return ""
     target_node = next((n for n in nodes if n['nodenm'] == ref_name), None)
-    
     if target_node:
         dist = int(target_node['nodeord']) - curr_ord
-        if dist == 0: 
-            return f"목표 도착 [{ref_name}]"
-        elif dist > 0: 
-            return f"목표까지 : {dist}정거장 남음 [{ref_name}]"
-        else: 
-            return f"이미 지남 [{ref_name}]"
+        if dist == 0: return f"목표 도착 [{ref_name}]"
+        elif dist > 0: return f"목표까지 : {dist}정거장 남음 [{ref_name}]"
+        else: return f"이미 지남 [{ref_name}]"
     return ""
 
 def get_color_by_bus(bus_no):
