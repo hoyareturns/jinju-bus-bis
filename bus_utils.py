@@ -7,47 +7,66 @@ import math
 import time
 
 def get_all_bus_locations_sync(targets, api_key, city_code):
-    """안정적인 통신을 위해 순차적으로 호출하며, 실패 시 최대 3번 재시도합니다."""
+    """안정적인 통신을 위해 순차적으로 호출하며, 에러 코드를 확인하고 재시도합니다."""
     results = []
-    session = requests.Session() # 세션을 유지하여 통신 안정성 확보
     
     for bus_no, route_id in targets:
         url = f"http://apis.data.go.kr/1613000/BusLcInfoInqireService/getRouteAcctoBusLcList?serviceKey={api_key}&cityCode={city_code}&routeId={route_id}&numOfRows=50&_type=xml"
         
         success = False
+        last_error_msg = ""
+        
         for attempt in range(3): # 에러 방지를 위한 3회 재시도 루프
             try:
-                # 타임아웃을 5초로 넉넉하게 주어 지연에 대비
-                res = session.get(url, timeout=5.0)
+                res = requests.get(url, timeout=5.0)
                 if res.status_code == 200:
                     root = ET.fromstring(res.content)
-                    items = root.findall('.//item') # 모든 버스를 가져옴
-                    buses = []
                     
-                    kst_now = datetime.now() + timedelta(hours=9)
-                    time_str = kst_now.strftime("%H:%M:%S")
-                    
-                    for item in items:
-                        node_nm = item.find('nodenm')
-                        node_ord = item.find('nodeord')
-                        if node_nm is not None and node_ord is not None:
-                            buses.append({
-                                "curr": node_nm.text,
-                                "ord": int(node_ord.text),
-                                "last_time": time_str
-                            })
-                    
-                    if not buses:
-                        results.append((bus_no, [], "운행종료/정보없음"))
+                    # API 자체 에러 코드 확인 (정상 코드는 '00')
+                    header = root.find('.//header')
+                    if header is not None:
+                        result_code = header.find('resultCode').text
+                        result_msg = header.find('resultMsg').text
+                        
+                        if result_code == "00": # 완벽한 정상 응답
+                            items = root.findall('.//item')
+                            buses = []
+                            
+                            kst_now = datetime.now() + timedelta(hours=9)
+                            time_str = kst_now.strftime("%H:%M:%S")
+                            
+                            for item in items:
+                                node_nm = item.find('nodenm')
+                                node_ord = item.find('nodeord')
+                                if node_nm is not None and node_ord is not None:
+                                    buses.append({
+                                        "curr": node_nm.text,
+                                        "ord": int(node_ord.text),
+                                        "last_time": time_str
+                                    })
+                            
+                            if not buses:
+                                results.append((bus_no, [], "운행종료 (차량없음)"))
+                            else:
+                                results.append((bus_no, buses, "정상"))
+                            success = True
+                            break # 성공 시 루프 탈출
+                        else:
+                            # 00이 아니면 API 제한 에러 (트래픽 초과 등)
+                            last_error_msg = f"API 오류({result_code})"
                     else:
-                        results.append((bus_no, buses, "정상"))
-                    success = True
-                    break # 성공 시 루프 탈출
+                        last_error_msg = "XML 파싱 오류"
             except Exception as e:
-                time.sleep(0.5) # 실패 시 0.5초 대기 후 다시 시도
+                last_error_msg = "통신 지연"
+                
+            time.sleep(0.5) # 실패 시 0.5초 대기 후 다시 시도
         
         if not success:
-            results.append((bus_no, [], "통신오류"))
+            results.append((bus_no, [], last_error_msg))
+            
+        # ⭐️ 가장 중요한 부분: 다음 버스를 물어보기 전에 0.2초를 무조건 쉬어줍니다.
+        # 이렇게 하면 공공데이터 서버가 공격(DDoS)으로 오해하고 차단하는 것을 막을 수 있습니다.
+        time.sleep(0.2) 
             
     return results
 
