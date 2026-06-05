@@ -247,4 +247,12 @@ with st.expander("상세 운행 노선 및 도착 예정 시간", expanded=False
             
             _, m_color = get_target_info(active_nodes, first_bus_ord, ref_name)
             if m_color == "#d62728": 
-                target_node = next((n for n in active_nodes if n['n
+                target_node = next((n for n in active_nodes if n['nodenm'] == ref_name), None)
+                if target_node:
+                    eta_text = get_arrival_info(target_node.get('nodeid'), bus_no, API_KEY, CITY_CODE)
+                    if eta_text:
+                        st.success(f"[{bus_no}번] {eta_text}")
+    
+    st.markdown("---")
+    if details_html:
+        st.markdown(details_html, unsafe_allow_html=True)
