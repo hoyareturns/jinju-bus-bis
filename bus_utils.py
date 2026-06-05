@@ -4,28 +4,55 @@ from datetime import datetime, timedelta
 import qrcode
 from io import BytesIO
 import math
+import aiohttp
+import asyncio
 
-def get_bus_location(bus_no, route_id, api_key, city_code):
-    url = f"http://apis.data.go.kr/1613000/BusLcInfoInqireService/getRouteAcctoBusLcList?serviceKey={api_key}&cityCode={city_code}&routeId={route_id}&numOfRows=10&_type=xml"
+async def fetch_bus_location(session, bus_no, route_id, api_key, city_code):
+    """단일 버스 노선의 실시간 위치(다중 버스)를 가져옵니다."""
+    url = f"http://apis.data.go.kr/1613000/BusLcInfoInqireService/getRouteAcctoBusLcList?serviceKey={api_key}&cityCode={city_code}&routeId={route_id}&numOfRows=50&_type=xml"
     try:
-        res = requests.get(url, timeout=0.5)
-        root = ET.fromstring(res.content)
-        item = root.find('.//item')
-        if item is not None:
+        # 타임아웃 5초 (공공데이터 서버 지연 대비)
+        async with session.get(url, timeout=5.0) as response:
+            content = await response.read()
+            root = ET.fromstring(content)
+            items = root.findall('.//item')
+            buses = []
+            
             kst_now = datetime.now() + timedelta(hours=9)
-            return {
-                "curr": item.find('nodenm').text,
-                "ord": int(item.find('nodeord').text),
-                "last_time": kst_now.strftime("%H:%M:%S")
-            }
-    except:
-        pass
-    return None
+            time_str = kst_now.strftime("%H:%M:%S")
+            
+            for item in items:
+                node_nm = item.find('nodenm')
+                node_ord = item.find('nodeord')
+                if node_nm is not None and node_ord is not None:
+                    buses.append({
+                        "curr": node_nm.text,
+                        "ord": int(node_ord.text),
+                        "last_time": time_str
+                    })
+                    
+            if not buses:
+                return bus_no, [], "운행종료/정보없음"
+            return bus_no, buses, "정상"
+            
+    except asyncio.TimeoutError:
+        return bus_no, [], "타임아웃"
+    except Exception as e:
+        return bus_no, [], "통신오류"
+
+async def get_all_bus_locations(targets, api_key, city_code):
+    """안정적인 비동기 처리를 위해 동시 연결 수를 제한하여 데이터를 가져옵니다."""
+    # limit=5 : 한 번에 최대 5개의 연결만 허용하여 공공데이터 서버의 차단을 방지
+    connector = aiohttp.TCPConnector(limit=5)
+    async with aiohttp.ClientSession(connector=connector) as session:
+        tasks = [fetch_bus_location(session, b_no, r_id, api_key, city_code) for b_no, r_id in targets]
+        results = await asyncio.gather(*tasks)
+        return results
 
 def get_arrival_info(node_id, bus_no, api_key, city_code):
     url = f"http://apis.data.go.kr/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList?serviceKey={api_key}&cityCode={city_code}&nodeId={node_id}&_type=xml"
     try:
-        res = requests.get(url, timeout=0.5)
+        res = requests.get(url, timeout=3.0)
         root = ET.fromstring(res.content)
         for item in root.findall('.//item'):
             routeno = item.find('routeno')
@@ -47,13 +74,14 @@ def get_qr_image(url):
     img = qr.make_image(fill_color="black", back_color="white")
     buf = BytesIO()
     img.save(buf)
-    return buf
+    return buf.getvalue()
 
 def get_bearing(lat1, lon1, lat2, lon2):
-    lat1, lon1, lat2, lon2 = map(math.radians, [float(lat1), float(lon1), float(lat2), float(lon2)])
-    dlon = lon2 - lon1
-    x = math.sin(dlon) * math.cos(lat2)
-    y = math.cos(lat1) * math.sin(lat2) - (math.sin(lat1) * math.cos(lat2) * math.cos(dlon))
+    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
+    dLon = lon2 - lon1
+    x = math.sin(dLon) * math.cos(lat2)
+    y = math.cos(lat1) * math.sin(lat2) - (math.sin(lat1) * math.cos(lat2) * math.cos(dLon))
     initial_bearing = math.atan2(x, y)
     initial_bearing = math.degrees(initial_bearing)
-    return (initial_bearing + 360) % 360
+    compass_bearing = (initial_bearing + 360) % 360
+    return compass_bearing
