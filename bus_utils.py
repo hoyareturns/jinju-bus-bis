@@ -4,50 +4,52 @@ from datetime import datetime, timedelta
 import qrcode
 from io import BytesIO
 import math
-import aiohttp
-import asyncio
+import time
 
-async def fetch_bus_location(session, bus_no, route_id, api_key, city_code):
-    """단일 버스 노선의 실시간 위치(다중 버스)를 가져옵니다."""
-    url = f"http://apis.data.go.kr/1613000/BusLcInfoInqireService/getRouteAcctoBusLcList?serviceKey={api_key}&cityCode={city_code}&routeId={route_id}&numOfRows=50&_type=xml"
-    try:
-        # 타임아웃 5초 (공공데이터 서버 지연 대비)
-        async with session.get(url, timeout=5.0) as response:
-            content = await response.read()
-            root = ET.fromstring(content)
-            items = root.findall('.//item')
-            buses = []
-            
-            kst_now = datetime.now() + timedelta(hours=9)
-            time_str = kst_now.strftime("%H:%M:%S")
-            
-            for item in items:
-                node_nm = item.find('nodenm')
-                node_ord = item.find('nodeord')
-                if node_nm is not None and node_ord is not None:
-                    buses.append({
-                        "curr": node_nm.text,
-                        "ord": int(node_ord.text),
-                        "last_time": time_str
-                    })
+def get_all_bus_locations_sync(targets, api_key, city_code):
+    """안정적인 통신을 위해 순차적으로 호출하며, 실패 시 최대 3번 재시도합니다."""
+    results = []
+    session = requests.Session() # 세션을 유지하여 통신 안정성 확보
+    
+    for bus_no, route_id in targets:
+        url = f"http://apis.data.go.kr/1613000/BusLcInfoInqireService/getRouteAcctoBusLcList?serviceKey={api_key}&cityCode={city_code}&routeId={route_id}&numOfRows=50&_type=xml"
+        
+        success = False
+        for attempt in range(3): # 에러 방지를 위한 3회 재시도 루프
+            try:
+                # 타임아웃을 5초로 넉넉하게 주어 지연에 대비
+                res = session.get(url, timeout=5.0)
+                if res.status_code == 200:
+                    root = ET.fromstring(res.content)
+                    items = root.findall('.//item') # 모든 버스를 가져옴
+                    buses = []
                     
-            if not buses:
-                return bus_no, [], "운행종료/정보없음"
-            return bus_no, buses, "정상"
+                    kst_now = datetime.now() + timedelta(hours=9)
+                    time_str = kst_now.strftime("%H:%M:%S")
+                    
+                    for item in items:
+                        node_nm = item.find('nodenm')
+                        node_ord = item.find('nodeord')
+                        if node_nm is not None and node_ord is not None:
+                            buses.append({
+                                "curr": node_nm.text,
+                                "ord": int(node_ord.text),
+                                "last_time": time_str
+                            })
+                    
+                    if not buses:
+                        results.append((bus_no, [], "운행종료/정보없음"))
+                    else:
+                        results.append((bus_no, buses, "정상"))
+                    success = True
+                    break # 성공 시 루프 탈출
+            except Exception as e:
+                time.sleep(0.5) # 실패 시 0.5초 대기 후 다시 시도
+        
+        if not success:
+            results.append((bus_no, [], "통신오류"))
             
-    except asyncio.TimeoutError:
-        return bus_no, [], "타임아웃"
-    except Exception as e:
-        return bus_no, [], "통신오류"
-
-async def get_all_bus_locations(targets, api_key, city_code):
-    """안정적인 비동기 처리를 위해 동시 연결 수를 제한하여 데이터를 가져옵니다."""
-    # limit=5 : 한 번에 최대 5개의 연결만 허용하여 공공데이터 서버의 차단을 방지
-    connector = aiohttp.TCPConnector(limit=5)
-    async with aiohttp.ClientSession(connector=connector) as session:
-        tasks = [fetch_bus_location(session, b_no, r_id, api_key, city_code) for b_no, r_id in targets]
-        results = await asyncio.gather(*tasks)
-        return results
+    return results
 
 def get_arrival_info(node_id, bus_no, api_key, city_code):
     url = f"http://apis.data.go.kr/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList?serviceKey={api_key}&cityCode={city_code}&nodeId={node_id}&_type=xml"

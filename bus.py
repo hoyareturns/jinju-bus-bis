@@ -2,16 +2,20 @@ import streamlit as st
 import json
 import urllib.parse
 import folium
-import asyncio
 from streamlit_folium import st_folium
-from bus_utils import get_all_bus_locations, get_qr_image, get_bearing, get_arrival_info
+from bus_utils import get_all_bus_locations_sync, get_qr_image, get_bearing, get_arrival_info
 from data_logic import find_buses_at_node, get_sorted_route, get_target_info, get_color_by_bus
 
 API_KEY = st.secrets["API_KEY"]
 CITY_CODE = st.secrets["CITY_CODE"]
 BASE_URL = "https://jinju-bus-bis-bpesd99kxyupdbxgsuwvzt.streamlit.app" 
 
-st.set_page_config(page_title="금산버스", layout="centered")
+st.set_page_config(page_title="금산버스", layout="centered", initial_sidebar_state="collapsed")
+st.markdown("""
+    <style>
+        .block-container { padding-top: 1rem; padding-bottom: 0rem; }
+    </style>
+""", unsafe_allow_html=True)
 
 @st.cache_data
 def load_bus_data():
@@ -20,23 +24,23 @@ def load_bus_data():
 
 bus_db = load_bus_data()
 
-# --- 비동기 데이터 호출 캐싱 (30초 제한으로 트래픽 방어) ---
+# --- 동기식 API 호출 및 30초 캐싱 (안정성 확보) ---
 @st.cache_data(ttl=30)
 def fetch_locations_cached(targets, api_key, city_code):
-    return asyncio.run(get_all_bus_locations(targets, api_key, city_code))
+    return get_all_bus_locations_sync(targets, api_key, city_code)
 
 query_params = st.query_params
 default_buses = query_params.get("buses", "10, 160, 360, 362, 363")
 default_ref = query_params.get("ref", "금산우체국/금산푸르지오2단지")
 
-# --- 사이드바 설정 영역 ---
+# --- 1. 사이드바 ---
 st.sidebar.title("금산버스 설정")
-st.sidebar.write("휴대폰 접속 QR")
 current_qr_url = f"{BASE_URL}?buses={urllib.parse.quote(default_buses)}&ref={urllib.parse.quote(default_ref)}"
-st.sidebar.image(get_qr_image(current_qr_url))
+st.sidebar.image(get_qr_image(current_qr_url), caption="접속 QR")
 st.sidebar.markdown("---")
 
 target_input = st.sidebar.text_input("버스번호 (쉼표 구분):", value=default_buses)
+target_buses = [b.strip() for b in target_input.split(",") if b.strip()]
 
 search_term = st.sidebar.text_input("정류장 검색어 입력:")
 all_nodes = sorted(list(set(s['nodenm'] for bus in bus_db.values() for route in bus.values() for s in route)))
@@ -46,167 +50,152 @@ options = ["선택 안함"] + filtered_nodes
 ref_index = options.index(default_ref) if default_ref in options else 0
 ref_name = st.sidebar.selectbox("목표 정류장 선택:", options, index=ref_index)
 
-mode = st.sidebar.radio("보기 모드:", ["버스 위치 추적", "경유 버스 목록", "노선 순서 보기"])
+# --- 2. 최상단 새로고침 ---
+col1, col2 = st.columns([4, 1])
+with col2:
+    if st.button("🔄 새로고침"):
+        fetch_locations_cached.clear()
 
-st.query_params["buses"] = target_input
-st.query_params["ref"] = ref_name
+# --- 3. 데이터 로드 및 오리지널 지도 렌더링 ---
+map_center = [35.1800, 128.1076]
+m = folium.Map(location=map_center, zoom_start=12, tiles="CartoDB positron")
 
-target_buses = [b.strip() for b in target_input.split(",") if b.strip()]
+target_node_id_for_api = None
+if ref_name != "선택 안함":
+    ref_node_data = next((s for bus in bus_db.values() for r in bus.values() for s in r if s['nodenm'] == ref_name), None)
+    if ref_node_data:
+        lat, lon = float(ref_node_data['gpslati']), float(ref_node_data['gpslong'])
+        target_node_id_for_api = ref_node_data.get('nodeid', ref_node_data.get('nodeId'))
+        # 목표 지점 빨간 깃발
+        folium.Marker(
+            location=[lat, lon],
+            icon=folium.Icon(color='red', icon='flag', prefix='fa')
+        ).add_to(m)
 
-# --- 메인 화면 영역 ---
-if st.button("새로고침"):
-    fetch_locations_cached.clear() # 캐시 초기화
-    st.rerun()
+targets = []
+for bus_no in target_buses:
+    if bus_no in bus_db:
+        route_id = list(bus_db[bus_no].keys())[0]
+        targets.append((bus_no, route_id))
 
-st.markdown("---")
+with st.spinner("최신 위치 정보를 가져오는 중 (최대 5초 소요)..."):
+    bus_results_raw = fetch_locations_cached(targets, API_KEY, CITY_CODE)
 
-if mode == "버스 위치 추적":
-    with st.spinner("최신 위치 정보를 가져오는 중..."):
-        m = folium.Map(location=[35.1800, 128.1076], zoom_start=12, tiles="CartoDB positron")
+bus_results = {}
+seen_coords = {} 
+
+for res in bus_results_raw:
+    bus_no, buses_active, status_msg = res
+    if status_msg == "정상" and buses_active:
+        route_id = list(bus_db[bus_no].keys())[0]
+        active_nodes = bus_db[bus_no][route_id]
+        bus_results[bus_no] = (buses_active, active_nodes)
         
-        # 목표 지점 (빨간 깃발)
-        target_node_id_for_api = None
-        if ref_name != "선택 안함":
-            ref_node_data = next((s for bus in bus_db.values() for r in bus.values() for s in r if s['nodenm'] == ref_name), None)
+        for bus_status in buses_active:
+            curr_ord = bus_status['ord']
+            curr_node = next((n for n in active_nodes if int(n['nodeord']) == curr_ord), None)
+            next_node_data = next((n for n in active_nodes if int(n['nodeord']) == curr_ord + 1), None)
             
-            if ref_node_data:
-                lat, lon = float(ref_node_data['gpslati']), float(ref_node_data['gpslong'])
-                target_node_id_for_api = ref_node_data.get('nodeid', ref_node_data.get('nodeId'))
+            if curr_node:
+                lat, lon = float(curr_node['gpslati']), float(curr_node['gpslong'])
+                color = get_color_by_bus(bus_no)
                 
-                folium.Marker(
-                    location=[lat, lon],
-                    popup=ref_name,
-                    icon=folium.Icon(color='red', icon='flag', prefix='fa')
-                ).add_to(m)
+                bearing = 0
+                if next_node_data:
+                    n_lat, n_lon = float(next_node_data['gpslati']), float(next_node_data['gpslong'])
+                    bearing = get_bearing(lat, lon, n_lat, n_lon)
+                    
+                # 마커 겹침 방지 (좌표 미세 조정)
+                coord_key = f"{lat:.4f}_{lon:.4f}"
+                if coord_key in seen_coords:
+                    offset_count = seen_coords[coord_key]
+                    lat += (0.00025 * offset_count)
+                    lon -= (0.00025 * offset_count)
+                    seen_coords[coord_key] += 1
+                else:
+                    seen_coords[coord_key] = 1
                 
-                html_dest = f"""
-                <div style="position: relative; width: 200px; text-align: center; left: -100px; top: 10px;">
-                    <div style="background-color: white; border: 2px solid #d32f2f; border-radius: 5px; padding: 3px 6px; display: inline-block; font-size: 12px; font-weight: bold; color: #d32f2f; box-shadow: 1px 1px 4px rgba(0,0,0,0.4);">
-                        {ref_name}
+                # [유저의 오리지널 심플 마커] 완벽 복구
+                html = f"""
+                <div style="position: relative; width: 40px; height: 40px;">
+                    <div style="position: absolute; left: 14px; top: 14px; width: 14px; height: 14px; background-color: {color}; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10;">
+                        <div style="transform: rotate({bearing}deg); color: white; font-size: 10px; font-weight: bold; line-height: 1;">&uarr;</div>
                     </div>
+                    <div style="position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); background-color: white; border: 2px solid {color}; border-radius: 6px; padding: 3px 6px; box-shadow: 2px 2px 5px rgba(0,0,0,0.3); white-space: nowrap; z-index: 5;">
+                        <div style="font-size: 12px; font-weight: bold; color: {color};">{bus_no}</div>
+                        <div style="font-size: 10px; color: #333; font-weight: bold;">{bus_status['curr']}</div>
+                    </div>
+                    <div style="position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid {color}; z-index: 4;"></div>
                 </div>
                 """
                 folium.Marker(
                     location=[lat, lon],
-                    icon=folium.DivIcon(html=html_dest)
+                    icon=folium.DivIcon(html=html, icon_size=(40, 40), icon_anchor=(20, 20))
                 ).add_to(m)
 
-        # --- 데이터 비동기 병렬 호출 ---
-        targets = []
-        for bus_no in target_buses:
-            if bus_no in bus_db:
-                route_id = list(bus_db[bus_no].keys())[0]
-                targets.append((bus_no, route_id))
+# 지도 표출
+st_folium(m, height=450, use_container_width=True, returned_objects=[])
 
-        bus_results_raw = fetch_locations_cached(targets, API_KEY, CITY_CODE)
-        
-        bus_results = {}
-        seen_coords = {} # 마커 겹침 방지를 위한 딕셔너리
 
-        for res in bus_results_raw:
-            bus_no, buses_active, status_msg = res
-            if status_msg == "정상" and buses_active:
-                route_id = list(bus_db[bus_no].keys())[0]
-                active_nodes = bus_db[bus_no][route_id]
-                bus_results[bus_no] = (buses_active, active_nodes)
-                
-                for bus_status in buses_active:
-                    curr_ord = bus_status['ord']
-                    curr_node = next((n for n in active_nodes if int(n['nodeord']) == curr_ord), None)
-                    next_node_data = next((n for n in active_nodes if int(n['nodeord']) == curr_ord + 1), None)
-                    
-                    if curr_node:
-                        lat = float(curr_node['gpslati'])
-                        lon = float(curr_node['gpslong'])
-                        color = get_color_by_bus(bus_no)
-                        
-                        bearing = 0
-                        if next_node_data:
-                            n_lat = float(next_node_data['gpslati'])
-                            n_lon = float(next_node_data['gpslong'])
-                            bearing = get_bearing(lat, lon, n_lat, n_lon)
-                            
-                        # 마커 겹침(Overlapping) 방지 로직 (UI를 해치지 않게 내부 좌표만 미세조정)
-                        coord_key = f"{lat:.4f}_{lon:.4f}"
-                        if coord_key in seen_coords:
-                            offset_count = seen_coords[coord_key]
-                            lat += (0.00025 * offset_count)
-                            lon -= (0.00025 * offset_count)
-                            seen_coords[coord_key] += 1
-                        else:
-                            seen_coords[coord_key] = 1
-                        
-                        # 사용자님이 제공한 오리지널 UI 마커 그대로 사용
-                        html = f"""
-                        <div style="position: relative; width: 40px; height: 40px;">
-                            <div style="position: absolute; left: 14px; top: 14px; width: 14px; height: 14px; background-color: {color}; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10;">
-                                <div style="transform: rotate({bearing}deg); color: white; font-size: 10px; font-weight: bold; line-height: 1;">&uarr;</div>
-                            </div>
-                            
-                            <div style="position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); background-color: white; border: 2px solid {color}; border-radius: 6px; padding: 3px 6px; box-shadow: 2px 2px 5px rgba(0,0,0,0.3); white-space: nowrap; z-index: 5;">
-                                <div style="font-size: 12px; font-weight: bold; color: {color};">{bus_no}</div>
-                                <div style="font-size: 10px; color: #333; font-weight: bold;">{bus_status['curr']}</div>
-                            </div>
-                            
-                            <div style="position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid {color}; z-index: 4;"></div>
-                        </div>
-                        """
-                        folium.Marker(
-                            location=[lat, lon],
-                            icon=folium.DivIcon(html=html, icon_size=(40, 40), icon_anchor=(20, 20))
-                        ).add_to(m)
-                    
-        st_folium(m, width="100%", height=400, returned_objects=[])
-        st.markdown("---")
-
-        # --- 하단 텍스트 정보 표출 ---
-        for bus_no in target_buses:
-            if bus_no in bus_results:
-                buses_active, active_nodes = bus_results[bus_no]
-                
-                # 여러 대의 버스 정보 모두 표시
-                for idx, bus_status in enumerate(buses_active):
-                    curr_ord = bus_status['ord']
-                    next_node_data = next((n for n in active_nodes if int(n['nodeord']) == curr_ord + 1), None)
-                    next_node_name = next_node_data['nodenm'] if next_node_data else "운행종료"
-                    
-                    # 2대 이상일 경우 번호 뒤에 (1), (2) 표시
-                    title_suffix = f" ({idx+1}호차)" if len(buses_active) > 1 else ""
-                    st.write(f"**[{bus_no}번]{title_suffix}**")
-                    st.write(f"현재 : {bus_status['curr']}")
-                    st.write(f"다음 : {next_node_name}")
-                    
-                    eta_displayed = False
-                    
-                    # 도착 정보 (가장 먼저 오는 1호차에 대해서만 API 시도)
-                    if idx == 0 and ref_name != "선택 안함" and target_node_id_for_api:
-                        eta_text = get_arrival_info(target_node_id_for_api, bus_no, API_KEY, CITY_CODE)
-                        if eta_text:
-                            st.write(f"목표까지 : {eta_text} [{ref_name}]")
-                            eta_displayed = True
-                    
-                    if not eta_displayed:
-                        info = get_target_info(active_nodes, curr_ord, ref_name, bus_db)
-                        if info: st.write(info)
-                        
-                    st.caption(f"확인 시간 : {bus_status['last_time']}")
-                    st.markdown("---")
-            else:
-                # 통신오류 또는 운행종료
-                err_msg = next((res[2] for res in bus_results_raw if res[0] == bus_no), "현재 정보 확인 불가")
-                st.write(f"[{bus_no}번] {err_msg}")
-                st.markdown("---")
-
-elif mode == "경유 버스 목록":
-    if ref_name != "선택 안함":
-        buses = find_buses_at_node(bus_db, ref_name)
-        st.write(f"[{ref_name}] 경유 버스: {', '.join(buses)}")
-
-elif mode == "노선 순서 보기":
+# --- 4. 하단 상세 정보 (신규 버전의 텍스트 UI 결합) ---
+with st.expander("상세 운행 노선 및 도착 예정 시간", expanded=True):
     for bus_no in target_buses:
-        if bus_no in bus_db:
-            nodes = list(bus_db[bus_no].values())[0]
-            sorted_nodes = get_sorted_route(nodes)
-            with st.expander(f"{bus_no}번 전체 노선 보기"):
-                for n in sorted_nodes:
-                    st.write(f"{n['nodeord']}. {n['nodenm']}")
+        # 오류가 난 경우
+        err_msg = next((res[2] for res in bus_results_raw if res[0] == bus_no), None)
+        if err_msg and err_msg != "정상":
+            st.error(f"[{bus_no}번] {err_msg}")
+            st.markdown("---")
+            continue
+            
+        if bus_no in bus_results:
+            buses_active, active_nodes = bus_results[bus_no]
+            st.markdown(f"<h4 style='color:#333;'>[{bus_no}번] 현재 {len(buses_active)}대 운행 중</h4>", unsafe_allow_html=True)
+            
+            for idx, bus_status in enumerate(buses_active):
+                curr_ord = bus_status['ord']
+                next_node_data = next((n for n in active_nodes if int(n['nodeord']) == curr_ord + 1), None)
+                next_node_name = next_node_data['nodenm'] if next_node_data else "운행종료"
+                
+                # 기본 정보
+                title_suffix = f" <span style='font-size:14px; color:gray;'>( {idx+1}호차 )</span>" if len(buses_active) > 1 else ""
+                st.markdown(f"**{bus_status['curr']} 통과** {title_suffix}", unsafe_allow_html=True)
+                st.write(f"▶ 다음 정류장 : {next_node_name}")
+                
+                # API 도착 예정 시간 (첫 번째 버스 한정)
+                if idx == 0 and ref_name != "선택 안함" and target_node_id_for_api:
+                    eta_text = get_arrival_info(target_node_id_for_api, bus_no, API_KEY, CITY_CODE)
+                    if eta_text:
+                        st.success(f"[{ref_name}] {eta_text}")
+                
+                # 가로 스크롤 전체 노선도 (현재 위치 빨강, 지난 위치 회색)
+                curr_idx = 0
+                for i, n in enumerate(active_nodes):
+                    if int(n['nodeord']) == curr_ord:
+                        curr_idx = i
+                        break
+                        
+                start_idx = max(0, curr_idx - 3)
+                end_idx = min(len(active_nodes), curr_idx + 6)
+                
+                path_spans = []
+                if start_idx > 0: path_spans.append("<span style='color:#adb5bd;'>...</span>")
+                    
+                for n in active_nodes[start_idx:end_idx]:
+                    n_ord = int(n['nodeord'])
+                    n_name = n['nodenm']
+                    if n_ord < curr_ord:
+                        path_spans.append(f"<span style='color:#adb5bd;'>{n_name}</span>")
+                    elif n_ord == curr_ord:
+                        path_spans.append(f"<span style='color:#d62728; font-weight:bold; font-size: 15px;'>📍{n_name}</span>")
+                    else:
+                        path_spans.append(f"<span style='color:#212529;'>{n_name}</span>")
+                        
+                if end_idx < len(active_nodes): path_spans.append("<span style='color:#212529;'>...</span>")
+                        
+                route_html = f"<div style='overflow-x: auto; white-space: nowrap; padding: 12px; background-color: #f8f9fa; border-radius: 8px; font-size: 13px; border: 1px solid #e9ecef; margin-top:5px; margin-bottom:15px;'>"
+                route_html += " &gt; ".join(path_spans)
+                route_html += "</div>"
+                
+                st.markdown(route_html, unsafe_allow_html=True)
+                
+            st.markdown("---")
