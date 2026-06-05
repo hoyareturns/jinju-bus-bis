@@ -11,6 +11,7 @@ API_KEY = st.secrets["API_KEY"]
 CITY_CODE = st.secrets["CITY_CODE"]
 BASE_URL = "https://jinju-bus-bis-bpesd99kxyupdbxgsuwvzt.streamlit.app" 
 
+# 모바일 화면을 꽉 채우기 위한 설정 및 불필요한 기본 여백 제거
 st.set_page_config(page_title="금산버스", layout="centered", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
@@ -60,15 +61,17 @@ if ref_name != "선택 안함":
     passing_buses = find_buses_at_node(bus_db, ref_name)
     st.sidebar.info(f"선택 정류장 경유 버스:\n{', '.join(passing_buses)}")
 
-# --- 2. 최상단 컨트롤 ---
+
+# --- 2. 최상단 컨트롤 (새로고침) ---
 col1, col2 = st.columns([4, 1])
 with col2:
     if st.button("새로고침"):
         fetch_locations_cached.clear()
 
-# --- 3. 지도 렌더링 ---
+
+# --- 3. 데이터 처리 및 지도 생성 준비 ---
 map_center = [35.18, 128.10]
-zoom_level = 12 # 줌 레벨을 낮춰 한눈에 보이도록 수정
+zoom_level = 12
 
 found_target = False
 target_lat, target_lon = None, None
@@ -86,18 +89,17 @@ if ref_name != "선택 안함":
                 if found_target: break
         if found_target: break
 
-# 한글 표기가 잘 되는 OpenStreetMap 타일 적용
-m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="OpenStreetMap")
+# 도로 위주의 깔끔한 테마로 원복
+m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="CartoDB positron")
 
-# 버스 마커를 가리지 않도록 깃발 대신 투명한 원형 마커로 목표 지점 표시
 if found_target:
     folium.CircleMarker(
         location=[target_lat, target_lon],
         radius=12,
-        color='blue',
+        color='#1f77b4',
         fill=True,
-        fill_color='blue',
-        fill_opacity=0.2,
+        fill_color='#1f77b4',
+        fill_opacity=0.3,
         weight=2,
         tooltip=f"목표: {ref_name}"
     ).add_to(m)
@@ -108,21 +110,24 @@ for bus_no in target_buses:
         route_id = list(bus_db[bus_no].keys())[0]
         targets.append((bus_no, route_id))
 
+# API 호출
 with st.spinner("불러오는 중..."):
     bus_results = fetch_locations_cached(targets, API_KEY, CITY_CODE)
 
 seen_coords = {}
 details_html = ""
+eta_messages = []
 
+# 결과 파싱 (화면에 그리지 않고 HTML 문자열로 먼저 조립)
 for result in bus_results:
     bus_no, buses_active, status_msg = result
     
-    # 상태별 메시지 분리 (운행종료 vs 통신오류)
+    # 상태 예외 처리
     if status_msg == "운행종료":
-        st.info(f"[{bus_no}번] 현재 운행 중인 버스가 없습니다. (운행 종료)")
+        details_html += f"<div style='margin-bottom:10px;'><b style='color:#1f77b4;'>[{bus_no}번]</b> 현재 운행 중인 버스가 없습니다. (운행 종료)</div>"
         continue
     elif status_msg != "정상":
-        st.error(f"[{bus_no}번] 데이터를 불러오지 못했습니다. ({status_msg})")
+        details_html += f"<div style='margin-bottom:10px;'><b style='color:#d62728;'>[{bus_no}번]</b> 데이터를 불러오지 못했습니다. ({status_msg})</div>"
         continue
         
     route_id = list(bus_db[bus_no].keys())[0]
@@ -131,6 +136,18 @@ for result in bus_results:
     if buses_active:
         details_html += f"<h4 style='color:#333; border-bottom:1px solid #ddd; padding-bottom:5px; margin-top:20px;'>[{bus_no}번] 현재 {len(buses_active)}대 운행 중</h4>"
     
+    # 도착 예정 시간(ETA) 확보
+    if buses_active and ref_name != "선택 안함":
+        first_bus_ord = buses_active[0]['ord']
+        _, m_color = get_target_info(active_nodes, first_bus_ord, ref_name)
+        if m_color == "#d62728": 
+            target_node = next((n for n in active_nodes if n['nodenm'] == ref_name), None)
+            if target_node:
+                eta_text = get_arrival_info(target_node.get('nodeid'), bus_no, API_KEY, CITY_CODE)
+                if eta_text:
+                    eta_messages.append(f"[{bus_no}번] {eta_text}")
+
+    # 마커 생성 및 가로 노선도 조립
     for idx, bus in enumerate(buses_active):
         curr_ord = bus['ord']
         info_text, marker_color = get_target_info(active_nodes, curr_ord, ref_name)
@@ -155,16 +172,17 @@ for result in bus_results:
             else:
                 seen_coords[coord_key] = 1
             
-            # 폰트 및 패딩 크기 확대 적용
+            # 말풍선 글자 길이에 맞게 자동 조정 (display: inline-block)
             html = f"""
             <div style="
                 background-color: {marker_color}; 
                 color: white; 
-                padding: 8px 14px; 
+                padding: 6px 12px; 
                 border-radius: 8px; 
                 font-weight: bold; 
-                font-size: 16px;
+                font-size: 15px;
                 white-space: nowrap;
+                display: inline-block;
                 box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
                 text-align: center;
                 border: 2px solid white;
@@ -193,20 +211,18 @@ for result in bus_results:
                 tooltip=f"{bus_no}번: {bus['curr']}"
             ).add_to(m)
 
-        # --- 가로 노선도 스마트 자르기 로직 ---
+        # 가로 노선도 (스마트 자르기) 조립
         details_html += f"<div style='margin-bottom:15px;'>"
         details_html += f"<b>{bus['curr']} 통과</b> <span style='font-size:0.8em;color:gray;'>({bus['last_time']} 기준)</span><br>"
         
         route_html = "<div style='overflow-x: auto; white-space: nowrap; padding: 12px; background-color: #f8f9fa; border-radius: 8px; font-size: 13px; border: 1px solid #e9ecef; margin-top:5px;'>"
         
-        # 현재 정류장 인덱스 찾기
         curr_idx = 0
         for i, n in enumerate(active_nodes):
             if int(n['nodeord']) == curr_ord:
                 curr_idx = i
                 break
                 
-        # 이전 3개, 이후 5개만 슬라이싱
         start_idx = max(0, curr_idx - 3)
         end_idx = min(len(active_nodes), curr_idx + 6)
         
@@ -233,26 +249,23 @@ for result in bus_results:
         
         details_html += route_html
 
+
+# --- 4. 화면 최상단에 지도 출력 ---
+# 지도를 새로고침 버튼 바로 아래에 렌더링 (밀림 방지)
 st_folium(m, height=450, use_container_width=True, returned_objects=[])
 
-# --- 4. 상세 텍스트 정보 ---
-with st.expander("상세 운행 노선 및 도착 예정 시간", expanded=False):
-    st.markdown("**목표 정류장 실시간 도착 정보**")
-    for result in bus_results:
-        bus_no, buses_active, status_msg = result
-        if status_msg == "정상" and buses_active and ref_name != "선택 안함":
-            route_id = list(bus_db[bus_no].keys())[0]
-            active_nodes = get_sorted_route(bus_db[bus_no][route_id])
-            first_bus_ord = buses_active[0]['ord']
-            
-            _, m_color = get_target_info(active_nodes, first_bus_ord, ref_name)
-            if m_color == "#d62728": 
-                target_node = next((n for n in active_nodes if n['nodenm'] == ref_name), None)
-                if target_node:
-                    eta_text = get_arrival_info(target_node.get('nodeid'), bus_no, API_KEY, CITY_CODE)
-                    if eta_text:
-                        st.success(f"[{bus_no}번] {eta_text}")
+
+# --- 5. 지도 하단에 상세 정보 출력 (기본 펼침 설정) ---
+# expanded=True 속성으로 접속하자마자 상세 정보가 보이도록 설정
+with st.expander("상세 운행 노선 및 도착 예정 시간", expanded=True):
     
-    st.markdown("---")
+    if eta_messages:
+        st.markdown("**🎯 목표 정류장 실시간 도착 정보**")
+        for msg in eta_messages:
+            st.success(msg)
+        st.markdown("---")
+        
     if details_html:
         st.markdown(details_html, unsafe_allow_html=True)
+    else:
+        st.info("조회된 운행 정보가 없습니다.")
