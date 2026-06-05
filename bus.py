@@ -33,7 +33,7 @@ query_params = st.query_params
 default_buses = query_params.get("buses", "10, 160, 360, 362, 363")
 default_ref = query_params.get("ref", "금산우체국/금산푸르지오2단지")
 
-# --- 1. 사이드바 (검색 필터 및 경유 버스 복구) ---
+# --- 1. 사이드바 ---
 st.sidebar.title("설정")
 current_qr_url = f"{BASE_URL}?buses={urllib.parse.quote(default_buses)}&ref={urllib.parse.quote(default_ref)}"
 qr_bytes = get_qr_image(current_qr_url)
@@ -50,14 +50,12 @@ for b in target_buses:
                 all_nodes.add(node['nodenm'])
 all_nodes_sorted = ["선택 안함"] + sorted(list(all_nodes))
 
-# 목표 정류장 텍스트 필터 복구
 search_kw = st.sidebar.text_input("목표 정류장 검색", "")
 filtered_nodes = [n for n in all_nodes_sorted if search_kw in n] if search_kw else all_nodes_sorted
 
 ref_idx = filtered_nodes.index(default_ref) if default_ref in filtered_nodes else 0
 ref_name = st.sidebar.selectbox("목표 정류장 선택", filtered_nodes, index=ref_idx)
 
-# 경유 버스 목록 복구
 if ref_name != "선택 안함":
     passing_buses = find_buses_at_node(bus_db, ref_name)
     st.sidebar.info(f"선택 정류장 경유 버스:\n{', '.join(passing_buses)}")
@@ -70,7 +68,7 @@ with col2:
 
 # --- 3. 지도 렌더링 ---
 map_center = [35.18, 128.10]
-zoom_level = 13
+zoom_level = 12 # 줌 레벨을 낮춰 한눈에 보이도록 수정
 
 found_target = False
 target_lat, target_lon = None, None
@@ -83,19 +81,24 @@ if ref_name != "선택 안함":
                     if node['nodenm'] == ref_name:
                         target_lat, target_lon = float(node['gpslati']), float(node['gpslong'])
                         map_center = [target_lat, target_lon]
-                        zoom_level = 14
                         found_target = True
                         break
                 if found_target: break
         if found_target: break
 
-m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="CartoDB positron")
+# 한글 표기가 잘 되는 OpenStreetMap 타일 적용
+m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="OpenStreetMap")
 
-# 목표 정류장 빨간 깃발 표기 (지도 위 눈에 띄게 고정)
+# 버스 마커를 가리지 않도록 깃발 대신 투명한 원형 마커로 목표 지점 표시
 if found_target:
-    folium.Marker(
+    folium.CircleMarker(
         location=[target_lat, target_lon],
-        icon=folium.Icon(color="red", icon="flag"),
+        radius=12,
+        color='blue',
+        fill=True,
+        fill_color='blue',
+        fill_opacity=0.2,
+        weight=2,
         tooltip=f"목표: {ref_name}"
     ).add_to(m)
 
@@ -114,14 +117,17 @@ details_html = ""
 for result in bus_results:
     bus_no, buses_active, status_msg = result
     
-    if status_msg != "정상":
-        details_html += f"<p><b>[{bus_no}번]</b> {status_msg}</p>"
+    # 상태별 메시지 분리 (운행종료 vs 통신오류)
+    if status_msg == "운행종료":
+        st.info(f"[{bus_no}번] 현재 운행 중인 버스가 없습니다. (운행 종료)")
+        continue
+    elif status_msg != "정상":
+        st.error(f"[{bus_no}번] 데이터를 불러오지 못했습니다. ({status_msg})")
         continue
         
     route_id = list(bus_db[bus_no].keys())[0]
     active_nodes = get_sorted_route(bus_db[bus_no][route_id])
     
-    # 운행 대수 표기
     if buses_active:
         details_html += f"<h4 style='color:#333; border-bottom:1px solid #ddd; padding-bottom:5px; margin-top:20px;'>[{bus_no}번] 현재 {len(buses_active)}대 운행 중</h4>"
     
@@ -134,14 +140,12 @@ for result in bus_results:
         if curr_node:
             lat, lon = float(curr_node['gpslati']), float(curr_node['gpslong'])
             
-            # 다음 정류장 기반 방위각 계산
             next_node = next((n for n in active_nodes if int(n['nodeord']) == curr_ord + 1), None)
             bearing = 0
             if next_node:
                 n_lat, n_lon = float(next_node['gpslati']), float(next_node['gpslong'])
                 bearing = get_bearing(lat, lon, n_lat, n_lon)
             
-            # 마커 겹침 방지 (Jitter)
             coord_key = f"{lat:.4f}_{lon:.4f}"
             if coord_key in seen_coords:
                 offset_count = seen_coords[coord_key]
@@ -151,32 +155,32 @@ for result in bus_results:
             else:
                 seen_coords[coord_key] = 1
             
-            # 넓어진 말풍선 + 방향 화살표 마커
+            # 폰트 및 패딩 크기 확대 적용
             html = f"""
             <div style="
                 background-color: {marker_color}; 
                 color: white; 
-                padding: 6px 12px; 
-                border-radius: 6px; 
+                padding: 8px 14px; 
+                border-radius: 8px; 
                 font-weight: bold; 
-                font-size: 14px;
+                font-size: 16px;
                 white-space: nowrap;
                 box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
                 text-align: center;
                 border: 2px solid white;
                 position: relative;
             ">
-                {bus_no}번<br><span style="font-size: 12px; font-weight: normal;">{bus['curr']}</span>
+                {bus_no}번<br><span style="font-size: 13px; font-weight: normal;">{bus['curr']}</span>
                 <div style="
                     position: absolute; 
-                    top: -10px; right: -10px; 
+                    top: -12px; right: -12px; 
                     background: white; 
                     color: {marker_color}; 
                     border-radius: 50%; 
-                    width: 22px; height: 22px; 
-                    line-height: 22px; 
+                    width: 24px; height: 24px; 
+                    line-height: 24px; 
                     text-align: center; 
-                    font-size: 14px;
+                    font-size: 15px;
                     transform: rotate({bearing}deg);
                     box-shadow: 1px 1px 3px rgba(0,0,0,0.3);
                 ">↑</div>
@@ -185,28 +189,44 @@ for result in bus_results:
             
             folium.Marker(
                 location=[lat, lon],
-                icon=folium.DivIcon(html=html, icon_anchor=(30, 25)),
+                icon=folium.DivIcon(html=html, icon_anchor=(40, 30)),
                 tooltip=f"{bus_no}번: {bus['curr']}"
             ).add_to(m)
 
-        # --- 가로 스크롤 전체 노선도 생성 ---
+        # --- 가로 노선도 스마트 자르기 로직 ---
         details_html += f"<div style='margin-bottom:15px;'>"
         details_html += f"<b>{bus['curr']} 통과</b> <span style='font-size:0.8em;color:gray;'>({bus['last_time']} 기준)</span><br>"
         
-        # 가로 스크롤을 위한 CSS 컨테이너
         route_html = "<div style='overflow-x: auto; white-space: nowrap; padding: 12px; background-color: #f8f9fa; border-radius: 8px; font-size: 13px; border: 1px solid #e9ecef; margin-top:5px;'>"
         
+        # 현재 정류장 인덱스 찾기
+        curr_idx = 0
+        for i, n in enumerate(active_nodes):
+            if int(n['nodeord']) == curr_ord:
+                curr_idx = i
+                break
+                
+        # 이전 3개, 이후 5개만 슬라이싱
+        start_idx = max(0, curr_idx - 3)
+        end_idx = min(len(active_nodes), curr_idx + 6)
+        
         path_spans = []
-        for n in active_nodes:
+        if start_idx > 0:
+            path_spans.append("<span style='color:#adb5bd;'>...</span>")
+            
+        for n in active_nodes[start_idx:end_idx]:
             n_ord = int(n['nodeord'])
             n_name = n['nodenm']
             
             if n_ord < curr_ord:
-                path_spans.append(f"<span style='color:#adb5bd;'>{n_name}</span>") # 지나침 (회색)
+                path_spans.append(f"<span style='color:#adb5bd;'>{n_name}</span>")
             elif n_ord == curr_ord:
-                path_spans.append(f"<span style='color:#d62728; font-weight:bold; font-size: 14px;'>📍{n_name}</span>") # 현재 (빨강 강조)
+                path_spans.append(f"<span style='color:#d62728; font-weight:bold; font-size: 15px;'>📍{n_name}</span>")
             else:
-                path_spans.append(f"<span style='color:#212529;'>{n_name}</span>") # 예정 (검정)
+                path_spans.append(f"<span style='color:#212529;'>{n_name}</span>")
+                
+        if end_idx < len(active_nodes):
+            path_spans.append("<span style='color:#212529;'>...</span>")
                 
         route_html += " &gt; ".join(path_spans)
         route_html += "</div></div>"
@@ -215,7 +235,7 @@ for result in bus_results:
 
 st_folium(m, height=450, use_container_width=True, returned_objects=[])
 
-# --- 4. 상세 텍스트 정보 (하단 접기 UI) ---
+# --- 4. 상세 텍스트 정보 ---
 with st.expander("상세 운행 노선 및 도착 예정 시간", expanded=False):
     st.markdown("**목표 정류장 실시간 도착 정보**")
     for result in bus_results:
@@ -227,14 +247,4 @@ with st.expander("상세 운행 노선 및 도착 예정 시간", expanded=False
             
             _, m_color = get_target_info(active_nodes, first_bus_ord, ref_name)
             if m_color == "#d62728": 
-                target_node = next((n for n in active_nodes if n['nodenm'] == ref_name), None)
-                if target_node:
-                    eta_text = get_arrival_info(target_node.get('nodeid'), bus_no, API_KEY, CITY_CODE)
-                    if eta_text:
-                        st.success(f"[{bus_no}번] {eta_text}")
-    
-    st.markdown("---")
-    if details_html:
-        st.markdown(details_html, unsafe_allow_html=True)
-    else:
-        st.write("현재 운행중인 버스가 없습니다.")
+                target_node = next((n for n in active_nodes if n['n
