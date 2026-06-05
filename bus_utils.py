@@ -3,51 +3,29 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 import qrcode
 from io import BytesIO
-import aiohttp
-import asyncio
 import math
 
-async def fetch_bus_location(session, bus_no, route_id, api_key, city_code):
-    url = f"http://apis.data.go.kr/1613000/BusLcInfoInqireService/getRouteAcctoBusLcList?serviceKey={api_key}&cityCode={city_code}&routeId={route_id}&numOfRows=50&_type=xml"
+def get_bus_location(bus_no, route_id, api_key, city_code):
+    url = f"http://apis.data.go.kr/1613000/BusLcInfoInqireService/getRouteAcctoBusLcList?serviceKey={api_key}&cityCode={city_code}&routeId={route_id}&numOfRows=10&_type=xml"
     try:
-        async with session.get(url, timeout=3.0) as response:
-            content = await response.read()
-            root = ET.fromstring(content)
-            items = root.findall('.//item')
-            buses = []
-            
+        res = requests.get(url, timeout=0.5)
+        root = ET.fromstring(res.content)
+        item = root.find('.//item')
+        if item is not None:
             kst_now = datetime.now() + timedelta(hours=9)
-            time_str = kst_now.strftime("%H:%M:%S")
-            
-            for item in items:
-                node_nm = item.find('nodenm')
-                node_ord = item.find('nodeord')
-                if node_nm is not None and node_ord is not None:
-                    buses.append({
-                        "curr": node_nm.text,
-                        "ord": int(node_ord.text),
-                        "last_time": time_str
-                    })
-                    
-            if not buses:
-                return bus_no, [], "운행종료"
-            return bus_no, buses, "정상"
-            
-    except asyncio.TimeoutError:
-        return bus_no, [], "타임아웃"
-    except Exception as e:
-        return bus_no, [], "통신오류"
-
-async def get_all_bus_locations(targets, api_key, city_code):
-    async with aiohttp.ClientSession() as session:
-        tasks = [fetch_bus_location(session, b_no, r_id, api_key, city_code) for b_no, r_id in targets]
-        results = await asyncio.gather(*tasks)
-        return results
+            return {
+                "curr": item.find('nodenm').text,
+                "ord": int(item.find('nodeord').text),
+                "last_time": kst_now.strftime("%H:%M:%S")
+            }
+    except:
+        pass
+    return None
 
 def get_arrival_info(node_id, bus_no, api_key, city_code):
     url = f"http://apis.data.go.kr/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList?serviceKey={api_key}&cityCode={city_code}&nodeId={node_id}&_type=xml"
     try:
-        res = requests.get(url, timeout=3.0)
+        res = requests.get(url, timeout=0.5)
         root = ET.fromstring(res.content)
         for item in root.findall('.//item'):
             routeno = item.find('routeno')
@@ -56,8 +34,8 @@ def get_arrival_info(node_id, bus_no, api_key, city_code):
                 if arrtime is not None:
                     eta_mins = int(arrtime.text) // 60
                     if eta_mins == 0:
-                        return "잠시 후 도착"
-                    return f"약 {eta_mins}분 후 도착"
+                        return "잠시 후 도착 예정"
+                    return f"약 {eta_mins}분 후 도착 예정"
     except:
         pass
     return None
@@ -69,15 +47,13 @@ def get_qr_image(url):
     img = qr.make_image(fill_color="black", back_color="white")
     buf = BytesIO()
     img.save(buf)
-    return buf.getvalue()
+    return buf
 
 def get_bearing(lat1, lon1, lat2, lon2):
-    """두 좌표 간의 방위각을 계산합니다."""
-    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
-    dLon = lon2 - lon1
-    x = math.sin(dLon) * math.cos(lat2)
-    y = math.cos(lat1) * math.sin(lat2) - (math.sin(lat1) * math.cos(lat2) * math.cos(dLon))
+    lat1, lon1, lat2, lon2 = map(math.radians, [float(lat1), float(lon1), float(lat2), float(lon2)])
+    dlon = lon2 - lon1
+    x = math.sin(dlon) * math.cos(lat2)
+    y = math.cos(lat1) * math.sin(lat2) - (math.sin(lat1) * math.cos(lat2) * math.cos(dlon))
     initial_bearing = math.atan2(x, y)
     initial_bearing = math.degrees(initial_bearing)
-    compass_bearing = (initial_bearing + 360) % 360
-    return compass_bearing
+    return (initial_bearing + 360) % 360
