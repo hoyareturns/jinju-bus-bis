@@ -3,8 +3,8 @@ import json
 import urllib.parse
 import folium
 from streamlit_folium import st_folium
-from bus_utils import get_all_bus_locations_sync, get_qr_image, get_bearing, get_arrival_info
-from data_logic import find_buses_at_node, get_sorted_route, get_target_info, get_color_by_bus
+from bus_utils import get_all_bus_locations_sync, get_qr_image, get_bearing
+from data_logic import find_buses_at_node, get_sorted_route, get_color_by_bus
 
 API_KEY = st.secrets["API_KEY"]
 CITY_CODE = st.secrets["CITY_CODE"]
@@ -24,7 +24,7 @@ def load_bus_data():
 
 bus_db = load_bus_data()
 
-# --- 동기식 API 호출 및 30초 캐싱 (안정성 확보) ---
+# --- 동기식 API 호출 및 30초 캐싱 ---
 @st.cache_data(ttl=30)
 def fetch_locations_cached(targets, api_key, city_code):
     return get_all_bus_locations_sync(targets, api_key, city_code)
@@ -60,12 +60,10 @@ with col2:
 map_center = [35.1800, 128.1076]
 m = folium.Map(location=map_center, zoom_start=12, tiles="CartoDB positron")
 
-target_node_id_for_api = None
 if ref_name != "선택 안함":
     ref_node_data = next((s for bus in bus_db.values() for r in bus.values() for s in r if s['nodenm'] == ref_name), None)
     if ref_node_data:
         lat, lon = float(ref_node_data['gpslati']), float(ref_node_data['gpslong'])
-        target_node_id_for_api = ref_node_data.get('nodeid', ref_node_data.get('nodeId'))
         # 목표 지점 빨간 깃발
         folium.Marker(
             location=[lat, lon],
@@ -78,7 +76,8 @@ for bus_no in target_buses:
         route_id = list(bus_db[bus_no].keys())[0]
         targets.append((bus_no, route_id))
 
-with st.spinner("최신 위치 정보를 가져오는 중 (최대 5초 소요)..."):
+# 스피너 안내 문구 변경 (안정성을 위해 딜레이가 있음을 안내)
+with st.spinner("안정적인 조회를 위해 데이터를 순차적으로 가져오고 있습니다 (약 7~10초 소요)..."):
     bus_results_raw = fetch_locations_cached(targets, API_KEY, CITY_CODE)
 
 bus_results = {}
@@ -137,8 +136,8 @@ for res in bus_results_raw:
 st_folium(m, height=450, use_container_width=True, returned_objects=[])
 
 
-# --- 4. 하단 상세 정보 (신규 버전의 텍스트 UI 결합) ---
-with st.expander("상세 운행 노선 및 도착 예정 시간", expanded=True):
+# --- 4. 하단 상세 정보 (도착 시간 로직 제거) ---
+with st.expander("상세 운행 노선", expanded=True):
     for bus_no in target_buses:
         # 오류가 난 경우
         err_msg = next((res[2] for res in bus_results_raw if res[0] == bus_no), None)
@@ -161,13 +160,7 @@ with st.expander("상세 운행 노선 및 도착 예정 시간", expanded=True)
                 st.markdown(f"**{bus_status['curr']} 통과** {title_suffix}", unsafe_allow_html=True)
                 st.write(f"▶ 다음 정류장 : {next_node_name}")
                 
-                # API 도착 예정 시간 (첫 번째 버스 한정)
-                if idx == 0 and ref_name != "선택 안함" and target_node_id_for_api:
-                    eta_text = get_arrival_info(target_node_id_for_api, bus_no, API_KEY, CITY_CODE)
-                    if eta_text:
-                        st.success(f"[{ref_name}] {eta_text}")
-                
-                # 가로 스크롤 전체 노선도 (현재 위치 빨강, 지난 위치 회색)
+                # 가로 스크롤 전체 노선도
                 curr_idx = 0
                 for i, n in enumerate(active_nodes):
                     if int(n['nodeord']) == curr_ord:

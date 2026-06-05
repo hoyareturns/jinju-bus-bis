@@ -26,7 +26,6 @@ def get_all_bus_locations_sync(targets, api_key, city_code):
                     header = root.find('.//header')
                     if header is not None:
                         result_code = header.find('resultCode').text
-                        result_msg = header.find('resultMsg').text
                         
                         if result_code == "00": # 완벽한 정상 응답
                             items = root.findall('.//item')
@@ -52,7 +51,6 @@ def get_all_bus_locations_sync(targets, api_key, city_code):
                             success = True
                             break # 성공 시 루프 탈출
                         else:
-                            # 00이 아니면 API 제한 에러 (트래픽 초과 등)
                             last_error_msg = f"API 오류({result_code})"
                     else:
                         last_error_msg = "XML 파싱 오류"
@@ -64,29 +62,10 @@ def get_all_bus_locations_sync(targets, api_key, city_code):
         if not success:
             results.append((bus_no, [], last_error_msg))
             
-        # ⭐️ 가장 중요한 부분: 다음 버스를 물어보기 전에 0.2초를 무조건 쉬어줍니다.
-        # 이렇게 하면 공공데이터 서버가 공격(DDoS)으로 오해하고 차단하는 것을 막을 수 있습니다.
-        time.sleep(0.2) 
+        # ⭐️ 버스 정보를 하나 요청하고 결과를 받은 뒤 무조건 1.5초 대기 (서버 차단 방지)
+        time.sleep(1.5) 
             
     return results
-
-def get_arrival_info(node_id, bus_no, api_key, city_code):
-    url = f"http://apis.data.go.kr/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList?serviceKey={api_key}&cityCode={city_code}&nodeId={node_id}&_type=xml"
-    try:
-        res = requests.get(url, timeout=3.0)
-        root = ET.fromstring(res.content)
-        for item in root.findall('.//item'):
-            routeno = item.find('routeno')
-            if routeno is not None and str(routeno.text) == str(bus_no):
-                arrtime = item.find('arrtime')
-                if arrtime is not None:
-                    eta_mins = int(arrtime.text) // 60
-                    if eta_mins == 0:
-                        return "잠시 후 도착 예정"
-                    return f"약 {eta_mins}분 후 도착 예정"
-    except:
-        pass
-    return None
 
 def get_qr_image(url):
     qr = qrcode.QRCode(box_size=4, border=1)
