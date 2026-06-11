@@ -30,7 +30,7 @@ def fetch_locations_cached(targets, api_key, city_code):
     return get_all_bus_locations_sync(targets, api_key, city_code)
 
 query_params = st.query_params
-default_buses = query_params.get("buses", "10, 160, 360, 362, 363")
+default_buses = query_params.get("buses", "10")
 default_ref = query_params.get("ref", "금산우체국/금산푸르지오2단지")
 
 # --- 1. 사이드바 ---
