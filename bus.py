@@ -30,7 +30,7 @@ def fetch_locations_cached(targets, api_key, city_code):
     return get_all_bus_locations_sync(targets, api_key, city_code)
 
 query_params = st.query_params
-default_buses = query_params.get("buses", "10")
+default_buses = query_params.get("buses", "10, 160, 360, 362, 363")
 default_ref = query_params.get("ref", "금산우체국/금산푸르지오2단지")
 
 # --- 1. 사이드바 ---
@@ -76,8 +76,7 @@ for bus_no in target_buses:
         route_id = list(bus_db[bus_no].keys())[0]
         targets.append((bus_no, route_id))
 
-# 스피너 안내 문구 변경 (안정성을 위해 딜레이가 있음을 안내)
-with st.spinner("안정적인 조회를 위해 데이터를 순차적으로 가져오고 있습니다 (약 7~10초 소요)..."):
+with st.spinner("최신 위치 정보를 가져오는 중 (최대 5초 소요)..."):
     bus_results_raw = fetch_locations_cached(targets, API_KEY, CITY_CODE)
 
 bus_results = {}
@@ -114,7 +113,7 @@ for res in bus_results_raw:
                 else:
                     seen_coords[coord_key] = 1
                 
-                # [유저의 오리지널 심플 마커] 완벽 복구
+                # [오리지널 심플 마커]
                 html = f"""
                 <div style="position: relative; width: 40px; height: 40px;">
                     <div style="position: absolute; left: 14px; top: 14px; width: 14px; height: 14px; background-color: {color}; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10;">
@@ -136,10 +135,9 @@ for res in bus_results_raw:
 st_folium(m, height=450, use_container_width=True, returned_objects=[])
 
 
-# --- 4. 하단 상세 정보 (도착 시간 로직 제거) ---
+# --- 4. 하단 상세 정보 (가로 노선도 전체 표기 및 자동 스크롤) ---
 with st.expander("상세 운행 노선", expanded=True):
     for bus_no in target_buses:
-        # 오류가 난 경우
         err_msg = next((res[2] for res in bus_results_raw if res[0] == bus_no), None)
         if err_msg and err_msg != "정상":
             st.error(f"[{bus_no}번] {err_msg}")
@@ -155,40 +153,49 @@ with st.expander("상세 운행 노선", expanded=True):
                 next_node_data = next((n for n in active_nodes if int(n['nodeord']) == curr_ord + 1), None)
                 next_node_name = next_node_data['nodenm'] if next_node_data else "운행종료"
                 
-                # 기본 정보
                 title_suffix = f" <span style='font-size:14px; color:gray;'>( {idx+1}호차 )</span>" if len(buses_active) > 1 else ""
                 st.markdown(f"**{bus_status['curr']} 통과** {title_suffix}", unsafe_allow_html=True)
                 st.write(f"▶ 다음 정류장 : {next_node_name}")
                 
-                # 가로 스크롤 전체 노선도
-                curr_idx = 0
-                for i, n in enumerate(active_nodes):
-                    if int(n['nodeord']) == curr_ord:
-                        curr_idx = i
-                        break
-                        
-                start_idx = max(0, curr_idx - 3)
-                end_idx = min(len(active_nodes), curr_idx + 6)
+                # 각 버스별 고유 ID 생성 (스크롤 제어용)
+                container_id = f"route-container-{bus_no}-{idx}"
+                current_id = f"current-node-{bus_no}-{idx}"
                 
+                # 가로 스크롤 노선도 조립 (생략 없이 active_nodes 전체 순회)
                 path_spans = []
-                if start_idx > 0: path_spans.append("<span style='color:#adb5bd;'>...</span>")
-                    
-                for n in active_nodes[start_idx:end_idx]:
+                for n in active_nodes:
                     n_ord = int(n['nodeord'])
                     n_name = n['nodenm']
                     if n_ord < curr_ord:
                         path_spans.append(f"<span style='color:#adb5bd;'>{n_name}</span>")
                     elif n_ord == curr_ord:
-                        path_spans.append(f"<span style='color:#d62728; font-weight:bold; font-size: 15px;'>📍{n_name}</span>")
+                        # 현재 위치 정류소 엘리먼트에 고유 ID 부여
+                        path_spans.append(f"<span id='{current_id}' style='color:#d62728; font-weight:bold; font-size: 15px;'>📍{n_name}</span>")
                     else:
                         path_spans.append(f"<span style='color:#212529;'>{n_name}</span>")
-                        
-                if end_idx < len(active_nodes): path_spans.append("<span style='color:#212529;'>...</span>")
-                        
-                route_html = f"<div style='overflow-x: auto; white-space: nowrap; padding: 12px; background-color: #f8f9fa; border-radius: 8px; font-size: 13px; border: 1px solid #e9ecef; margin-top:5px; margin-bottom:15px;'>"
-                route_html += " &gt; ".join(path_spans)
-                route_html += "</div>"
                 
+                # HTML 컨테이너 생성
+                route_html = f"""
+                <div id="{container_id}" style="overflow-x: auto; white-space: nowrap; padding: 12px; background-color: #f8f9fa; border-radius: 8px; font-size: 13px; border: 1px solid #e9ecef; margin-top:5px; margin-bottom:5px;">
+                    {" &gt; ".join(path_spans)}
+                </div>
+                """
                 st.markdown(route_html, unsafe_allow_html=True)
+                
+                # ✨ 화면이 로드되면 현재 위치(📍) 정류장이 가로 스크롤바의 정중앙에 오도록 계산하는 스크립트
+                js_scroll = f"""
+                <script>
+                    setTimeout(function() {{
+                        var container = document.getElementById('{container_id}');
+                        var element = document.getElementById('{current_id}');
+                        if (container && element) {{
+                            // 현재 정류장 위치를 컨테이너 중심 정렬 계산
+                            container.scrollLeft = element.offsetLeft - (container.clientWidth / 2) + (element.clientWidth / 2);
+                        }}
+                    }}, 150);
+                </script>
+                """
+                st.markdown(js_scroll, unsafe_allow_html=True)
+                st.write("") # 간격 조절
                 
             st.markdown("---")
