@@ -49,7 +49,6 @@ options = ["선택 안함"] + filtered_nodes
 ref_index = options.index(default_ref) if default_ref in options else 0
 ref_name = st.sidebar.selectbox("목표 정류장 선택:", options, index=ref_index)
 
-# 관리자 모드: 모든 정류소 위치 지도 표기 옵션 토글
 admin_mode = st.sidebar.checkbox("⚙️ 관리자 모드: 모든 정류소 표시", value=False)
 
 
@@ -60,7 +59,7 @@ with col2:
         fetch_locations_cached.clear()
 
 
-# --- 3. 데이터 로드 및 지도 렌더링 (최상단 고정) ---
+# --- 3. 데이터 로드 및 지도 렌더링 ---
 map_center = [35.1800, 128.1076]
 m = folium.Map(location=map_center, zoom_start=12, tiles="CartoDB positron")
 
@@ -73,7 +72,6 @@ if ref_name != "선택 안함":
             icon=folium.Icon(color='red', icon='flag', prefix='fa')
         ).add_to(m)
 
-# 관리자 모드가 활성화된 경우 진주시 전역 정류소를 가벼운 도트 마커로 시각화 (렉 방지)
 if admin_mode:
     unique_stations = {}
     for b_data in bus_db.values():
@@ -82,7 +80,7 @@ if admin_mode:
                 unique_stations[node['nodenm']] = (float(node['gpslati']), float(node['gpslong']))
     
     for name, coords in unique_stations.items():
-        if name != ref_name: # 목표 정류장 마커와 중복 제외
+        if name != ref_name:
             folium.CircleMarker(
                 location=coords,
                 radius=4,
@@ -159,7 +157,7 @@ st_folium(m, height=450, use_container_width=True, returned_objects=[])
 # --- 4. 하단 상세 정보 영역 (기본 펼침 설정) ---
 with st.expander("상세 운행 노선 정보", expanded=True):
     
-    # 1단계: 지정 정류소 경유 버스 목록 표출 (중복 제거 완료)
+    # 정류소별 경유 버스 번호 목록 표출 분기
     if ref_name != "선택 안함":
         passing_buses = find_buses_at_node(bus_db, ref_name)
         st.markdown(f"📢 **[{ref_name}] 경유 버스 번호 목록:** &nbsp;&nbsp;` {' ` , ` '.join(passing_buses)} `")
@@ -188,7 +186,7 @@ with st.expander("상세 운행 노선 정보", expanded=True):
                 container_id = f"route-container-{bus_no}-{idx}"
                 current_id = f"current-node-{bus_no}-{idx}"
                 
-                # 2단계: 생략 구간 없이 전체 정류소를 가로 바에 렌더링
+                # 가로 노선도 전체 정류소 렌더링
                 path_spans = []
                 for n in active_nodes:
                     n_ord = int(n['nodeord'])
@@ -196,7 +194,8 @@ with st.expander("상세 운행 노선 정보", expanded=True):
                     if n_ord < curr_ord:
                         path_spans.append(f"<span style='color:#adb5bd;'>{n_name}</span>")
                     elif n_ord == curr_ord:
-                        path_spans.append(f"<span id='{current_id}' style='color:#d62728; font-weight:bold; font-size: 15px;'>📍{n_name}(현재)</span>")
+                        # 브라우저 추적이 용이하도록 빨간색 강조 지점에 현재 노선 정보 마킹 및 고정 ID 매핑
+                        path_spans.append(f"<span id='{current_id}' style='color:#d62728; font-weight:bold; font-size: 15px; display:inline-block;'>📍{n_name}(현재)</span>")
                     else:
                         path_spans.append(f"<span style='color:#212529;'>{n_name}</span>")
                 
@@ -207,16 +206,15 @@ with st.expander("상세 운행 노선 정보", expanded=True):
                 """
                 st.markdown(route_html, unsafe_allow_html=True)
                 
-                # 3단계: 전체 노선 중 현재 버스 위치(📍) 정류장이 가로축 정중앙에 자동으로 오도록 맞춤 스크롤 제어
+                # 브라우저 정적 구조 렌더링 완료 이후, 중심정렬(inline: center) 함수를 호출하여 화면 슬라이딩 제어
                 js_scroll = f"""
                 <script>
                     setTimeout(function() {{
-                        var container = document.getElementById('{container_id}');
                         var element = document.getElementById('{current_id}');
-                        if (container && element) {{
-                            container.scrollLeft = element.offsetLeft - (container.clientWidth / 2) + (element.clientWidth / 2);
+                        if (element) {{
+                            element.scrollIntoView({ {behavior: 'smooth', block: 'nearest', inline: 'center'} });
                         }}
-                    }}, 150);
+                    }}, 400);
                 </script>
                 """
                 st.markdown(js_scroll, unsafe_allow_html=True)
