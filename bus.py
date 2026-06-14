@@ -24,7 +24,6 @@ def load_bus_data():
 
 bus_db = load_bus_data()
 
-# --- 동기식 API 호출 및 30초 캐싱 ---
 @st.cache_data(ttl=30)
 def fetch_locations_cached(targets, api_key, city_code):
     return get_all_bus_locations_sync(targets, api_key, city_code)
@@ -33,7 +32,7 @@ query_params = st.query_params
 default_buses = query_params.get("buses", "10, 160, 360, 362, 363")
 default_ref = query_params.get("ref", "금산우체국/금산푸르지오2단지")
 
-# --- 1. 사이드바 ---
+# --- 1. 사이드바 설정 영역 ---
 st.sidebar.title("금산버스 설정")
 current_qr_url = f"{BASE_URL}?buses={urllib.parse.quote(default_buses)}&ref={urllib.parse.quote(default_ref)}"
 st.sidebar.image(get_qr_image(current_qr_url), caption="접속 QR")
@@ -50,13 +49,18 @@ options = ["선택 안함"] + filtered_nodes
 ref_index = options.index(default_ref) if default_ref in options else 0
 ref_name = st.sidebar.selectbox("목표 정류장 선택:", options, index=ref_index)
 
-# --- 2. 최상단 새로고침 ---
+# 관리자 모드: 모든 정류소 위치 지도 표기 옵션 토글
+admin_mode = st.sidebar.checkbox("⚙️ 관리자 모드: 모든 정류소 표시", value=False)
+
+
+# --- 2. 최상단 새로고침 컨트롤 ---
 col1, col2 = st.columns([4, 1])
 with col2:
     if st.button("🔄 새로고침"):
         fetch_locations_cached.clear()
 
-# --- 3. 데이터 로드 및 오리지널 지도 렌더링 ---
+
+# --- 3. 데이터 로드 및 지도 렌더링 (최상단 고정) ---
 map_center = [35.1800, 128.1076]
 m = folium.Map(location=map_center, zoom_start=12, tiles="CartoDB positron")
 
@@ -64,11 +68,31 @@ if ref_name != "선택 안함":
     ref_node_data = next((s for bus in bus_db.values() for r in bus.values() for s in r if s['nodenm'] == ref_name), None)
     if ref_node_data:
         lat, lon = float(ref_node_data['gpslati']), float(ref_node_data['gpslong'])
-        # 목표 지점 빨간 깃발
         folium.Marker(
             location=[lat, lon],
             icon=folium.Icon(color='red', icon='flag', prefix='fa')
         ).add_to(m)
+
+# 관리자 모드가 활성화된 경우 진주시 전역 정류소를 가벼운 도트 마커로 시각화 (렉 방지)
+if admin_mode:
+    unique_stations = {}
+    for b_data in bus_db.values():
+        for r_data in b_data.values():
+            for node in r_data:
+                unique_stations[node['nodenm']] = (float(node['gpslati']), float(node['gpslong']))
+    
+    for name, coords in unique_stations.items():
+        if name != ref_name: # 목표 정류장 마커와 중복 제외
+            folium.CircleMarker(
+                location=coords,
+                radius=4,
+                color='#a0a0a0',
+                fill=True,
+                fill_color='#cbd5e1',
+                fill_opacity=0.5,
+                weight=1,
+                tooltip=name
+            ).add_to(m)
 
 targets = []
 for bus_no in target_buses:
@@ -76,7 +100,7 @@ for bus_no in target_buses:
         route_id = list(bus_db[bus_no].keys())[0]
         targets.append((bus_no, route_id))
 
-with st.spinner("최신 위치 정보를 가져오는 중 (최대 5초 소요)..."):
+with st.spinner("최신 위치 정보를 가져오는 중..."):
     bus_results_raw = fetch_locations_cached(targets, API_KEY, CITY_CODE)
 
 bus_results = {}
@@ -103,7 +127,6 @@ for res in bus_results_raw:
                     n_lat, n_lon = float(next_node_data['gpslati']), float(next_node_data['gpslong'])
                     bearing = get_bearing(lat, lon, n_lat, n_lon)
                     
-                # 마커 겹침 방지 (좌표 미세 조정)
                 coord_key = f"{lat:.4f}_{lon:.4f}"
                 if coord_key in seen_coords:
                     offset_count = seen_coords[coord_key]
@@ -113,7 +136,6 @@ for res in bus_results_raw:
                 else:
                     seen_coords[coord_key] = 1
                 
-                # [오리지널 심플 마커]
                 html = f"""
                 <div style="position: relative; width: 40px; height: 40px;">
                     <div style="position: absolute; left: 14px; top: 14px; width: 14px; height: 14px; background-color: {color}; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10;">
@@ -131,12 +153,18 @@ for res in bus_results_raw:
                     icon=folium.DivIcon(html=html, icon_size=(40, 40), icon_anchor=(20, 20))
                 ).add_to(m)
 
-# 지도 표출
 st_folium(m, height=450, use_container_width=True, returned_objects=[])
 
 
-# --- 4. 하단 상세 정보 (가로 노선도 전체 표기 및 자동 스크롤) ---
-with st.expander("상세 운행 노선", expanded=True):
+# --- 4. 하단 상세 정보 영역 (기본 펼침 설정) ---
+with st.expander("상세 운행 노선 정보", expanded=True):
+    
+    # 1단계: 지정 정류소 경유 버스 목록 표출 (중복 제거 완료)
+    if ref_name != "선택 안함":
+        passing_buses = find_buses_at_node(bus_db, ref_name)
+        st.markdown(f"📢 **[{ref_name}] 경유 버스 번호 목록:** &nbsp;&nbsp;` {' ` , ` '.join(passing_buses)} `")
+        st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
+        
     for bus_no in target_buses:
         err_msg = next((res[2] for res in bus_results_raw if res[0] == bus_no), None)
         if err_msg and err_msg != "정상":
@@ -146,7 +174,7 @@ with st.expander("상세 운행 노선", expanded=True):
             
         if bus_no in bus_results:
             buses_active, active_nodes = bus_results[bus_no]
-            st.markdown(f"<h4 style='color:#333;'>[{bus_no}번] 현재 {len(buses_active)}대 운행 중</h4>", unsafe_allow_html=True)
+            st.markdown(f"<h4 style='color:#333; margin-bottom: 5px;'>[{bus_no}번] 현재 {len(buses_active)}대 운행 중</h4>", unsafe_allow_html=True)
             
             for idx, bus_status in enumerate(buses_active):
                 curr_ord = bus_status['ord']
@@ -157,11 +185,10 @@ with st.expander("상세 운행 노선", expanded=True):
                 st.markdown(f"**{bus_status['curr']} 통과** {title_suffix}", unsafe_allow_html=True)
                 st.write(f"▶ 다음 정류장 : {next_node_name}")
                 
-                # 각 버스별 고유 ID 생성 (스크롤 제어용)
                 container_id = f"route-container-{bus_no}-{idx}"
                 current_id = f"current-node-{bus_no}-{idx}"
                 
-                # 가로 스크롤 노선도 조립 (생략 없이 active_nodes 전체 순회)
+                # 2단계: 생략 구간 없이 전체 정류소를 가로 바에 렌더링
                 path_spans = []
                 for n in active_nodes:
                     n_ord = int(n['nodeord'])
@@ -169,12 +196,10 @@ with st.expander("상세 운행 노선", expanded=True):
                     if n_ord < curr_ord:
                         path_spans.append(f"<span style='color:#adb5bd;'>{n_name}</span>")
                     elif n_ord == curr_ord:
-                        # 현재 위치 정류소 엘리먼트에 고유 ID 부여
-                        path_spans.append(f"<span id='{current_id}' style='color:#d62728; font-weight:bold; font-size: 15px;'>📍{n_name}</span>")
+                        path_spans.append(f"<span id='{current_id}' style='color:#d62728; font-weight:bold; font-size: 15px;'>📍{n_name}(현재)</span>")
                     else:
                         path_spans.append(f"<span style='color:#212529;'>{n_name}</span>")
                 
-                # HTML 컨테이너 생성
                 route_html = f"""
                 <div id="{container_id}" style="overflow-x: auto; white-space: nowrap; padding: 12px; background-color: #f8f9fa; border-radius: 8px; font-size: 13px; border: 1px solid #e9ecef; margin-top:5px; margin-bottom:5px;">
                     {" &gt; ".join(path_spans)}
@@ -182,20 +207,19 @@ with st.expander("상세 운행 노선", expanded=True):
                 """
                 st.markdown(route_html, unsafe_allow_html=True)
                 
-                # ✨ 화면이 로드되면 현재 위치(📍) 정류장이 가로 스크롤바의 정중앙에 오도록 계산하는 스크립트
+                # 3단계: 전체 노선 중 현재 버스 위치(📍) 정류장이 가로축 정중앙에 자동으로 오도록 맞춤 스크롤 제어
                 js_scroll = f"""
                 <script>
                     setTimeout(function() {{
                         var container = document.getElementById('{container_id}');
                         var element = document.getElementById('{current_id}');
                         if (container && element) {{
-                            // 현재 정류장 위치를 컨테이너 중심 정렬 계산
                             container.scrollLeft = element.offsetLeft - (container.clientWidth / 2) + (element.clientWidth / 2);
                         }}
                     }}, 150);
                 </script>
                 """
                 st.markdown(js_scroll, unsafe_allow_html=True)
-                st.write("") # 간격 조절
+                st.write("") 
                 
             st.markdown("---")
