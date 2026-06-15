@@ -18,7 +18,6 @@ def render_sidebar(bus_db, fetch_locations_cached):
     all_nodes = sorted(list(set(s['nodenm'] for bus in bus_db.values() for route in bus.values() for s in route)))
     filtered_nodes = [n for n in all_nodes if search_term in n] if search_term else all_nodes
 
-    # 검색과 상관없이 현재 선택값을 리스트에 보존
     safe_nodes = set(filtered_nodes)
     if st.session_state["selected_node_1"] != "선택 안함":
         safe_nodes.add(st.session_state["selected_node_1"])
@@ -52,7 +51,7 @@ def render_sidebar(bus_db, fetch_locations_cached):
 
     st.sidebar.markdown("---")
 
-    # 목표노선 찾기 동작 시 텍스트 입력창 값 덮어쓰기 연동
+    # 목표노선 찾기 및 새로고침 버튼을 사이드바에 안전하게 세로로 배치
     if st.sidebar.button("목표노선 찾기 (조회)", type="primary", use_container_width=True):
         st.session_state["active_ref_1"] = ref_name_1
         st.session_state["active_ref_2"] = ref_name_2
@@ -73,11 +72,8 @@ def render_sidebar(bus_db, fetch_locations_cached):
         st.session_state["needs_fetch"] = True
         st.rerun()
 
-    st.sidebar.markdown("---")
-
-    col1, col2 = st.columns([4, 1])
-    with col2:
-        if st.button("새로고침"):
-            fetch_locations_cached.clear()
-            st.session_state["needs_fetch"] = True
-            st.rerun()
+    # 상단에서 잘리던 새로고침 버튼을 사이드바 하단으로 이동
+    if st.sidebar.button("새로고침", use_container_width=True):
+        fetch_locations_cached.clear()
+        st.session_state["needs_fetch"] = True
+        st.rerun()

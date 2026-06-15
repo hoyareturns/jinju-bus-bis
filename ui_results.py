@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 from data_logic import find_buses_at_node
 
 def render_results(bus_db):
@@ -12,6 +13,9 @@ def render_results(bus_db):
         buses_1 = set(find_buses_at_node(bus_db, active_ref_1))
         buses_2 = set(find_buses_at_node(bus_db, active_ref_2))
         common_buses = sorted(list(buses_1.intersection(buses_2)), key=lambda x: str(x))
+
+    # 모든 버스의 현재 위치 ID를 수집할 리스트
+    scroll_targets = []
 
     with st.expander("상세 운행 노선 정보", expanded=True):
         
@@ -55,6 +59,9 @@ def render_results(bus_db):
                     container_id = f"route-container-{bus_no}-{idx}"
                     current_id = f"current-node-{bus_no}-{idx}"
                     
+                    # 스크롤 대상을 리스트에 추가
+                    scroll_targets.append(current_id)
+                    
                     path_spans = []
                     for n in active_nodes:
                         n_ord = int(n['nodeord'])
@@ -72,18 +79,29 @@ def render_results(bus_db):
                     </div>
                     """
                     st.markdown(route_html, unsafe_allow_html=True)
-                    
-                    js_scroll = f"""
-                    <script>
-                        setTimeout(function() {{
-                            var element = document.getElementById('{current_id}');
-                            if (element) {{
-                                element.scrollIntoView({{behavior: 'smooth', block: 'nearest', inline: 'center'}});
-                            }}
-                        }}, 400);
-                    </script>
-                    """
-                    st.markdown(js_scroll, unsafe_allow_html=True)
                     st.write("") 
                     
                 st.markdown("---")
+
+    # 수집된 모든 스크롤 대상을 한 번에 제어하는 통합 자바스크립트 실행
+    if scroll_targets:
+        js_lines = []
+        for target_id in scroll_targets:
+            safe_var = target_id.replace('-', '_')
+            js_lines.append(f"""
+                var {safe_var} = window.parent.document.getElementById('{target_id}');
+                if ({safe_var}) {{
+                    {safe_var}.scrollIntoView({{behavior: 'smooth', block: 'nearest', inline: 'center'}});
+                }}
+            """)
+        
+        combined_js = "\n".join(js_lines)
+        final_script = f"""
+        <script>
+            setTimeout(function() {{
+                {combined_js}
+            }}, 600);
+        </script>
+        """
+        # components.html을 사용하여 부모 DOM에 확실하게 접근
+        components.html(final_script, height=0, width=0)
