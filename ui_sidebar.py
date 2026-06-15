@@ -6,7 +6,7 @@ from data_logic import find_buses_at_node
 BASE_URL = "https://jinju-bus-bis-bpesd99kxyupdbxgsuwvzt.streamlit.app" 
 
 def render_sidebar(bus_db, fetch_locations_cached):
-    st.sidebar.title("금산버스 설정")
+    st.sidebar.title("설정")
     
     current_qr_url = f"{BASE_URL}?buses={urllib.parse.quote(st.session_state['target_bus_input'])}&ref={urllib.parse.quote(st.session_state['selected_node_1'])}"
     st.sidebar.image(get_qr_image(current_qr_url), caption="접속 QR")
@@ -51,7 +51,6 @@ def render_sidebar(bus_db, fetch_locations_cached):
 
     st.sidebar.markdown("---")
 
-    # 목표노선 찾기 및 새로고침 버튼을 사이드바에 안전하게 세로로 배치
     if st.sidebar.button("목표노선 찾기 (조회)", type="primary", use_container_width=True):
         st.session_state["active_ref_1"] = ref_name_1
         st.session_state["active_ref_2"] = ref_name_2
@@ -68,12 +67,6 @@ def render_sidebar(bus_db, fetch_locations_cached):
 
         st.session_state["active_buses"] = [b.strip() for b in st.session_state["target_bus_input"].split(",") if b.strip()]
         
-        fetch_locations_cached.clear()
-        st.session_state["needs_fetch"] = True
-        st.rerun()
-
-    # 상단에서 잘리던 새로고침 버튼을 사이드바 하단으로 이동
-    if st.sidebar.button("새로고침", use_container_width=True):
         fetch_locations_cached.clear()
         st.session_state["needs_fetch"] = True
         st.rerun()

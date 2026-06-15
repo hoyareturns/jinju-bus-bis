@@ -54,11 +54,23 @@ def fetch_locations_cached(targets, api_key, city_code):
 
 bus_db = load_bus_data()
 
-# UI 모듈 렌더링 호출
+# 사이드바 렌더링
 render_sidebar(bus_db, fetch_locations_cached)
+
+# 메인 화면 상단 레이아웃 (새로고침 버튼 잘림 완벽 방지)
+col_title, col_btn = st.columns([3, 1])
+with col_title:
+    st.markdown("### 🚌 실시간 버스 위치")
+with col_btn:
+    if st.button("🔄 새로고침", use_container_width=True):
+        fetch_locations_cached.clear()
+        st.session_state["needs_fetch"] = True
+        st.rerun()
+
+# 지도 렌더링
 render_map(bus_db)
 
-# 통신 로직 (needs_fetch가 True일 때만 발동)
+# 통신 로직 (needs_fetch가 True일 때만 동작)
 if st.session_state["needs_fetch"]:
     targets = []
     for bus_no in st.session_state["active_buses"]:
@@ -74,4 +86,5 @@ if st.session_state["needs_fetch"]:
     
     st.session_state["needs_fetch"] = False
 
+# 결과 노선도 렌더링
 render_results(bus_db)

@@ -14,7 +14,6 @@ def render_results(bus_db):
         buses_2 = set(find_buses_at_node(bus_db, active_ref_2))
         common_buses = sorted(list(buses_1.intersection(buses_2)), key=lambda x: str(x))
 
-    # 모든 버스의 현재 위치 ID를 수집할 리스트
     scroll_targets = []
 
     with st.expander("상세 운행 노선 정보", expanded=True):
@@ -59,7 +58,7 @@ def render_results(bus_db):
                     container_id = f"route-container-{bus_no}-{idx}"
                     current_id = f"current-node-{bus_no}-{idx}"
                     
-                    # 스크롤 대상을 리스트에 추가
+                    # 스크롤 타겟 수집
                     scroll_targets.append(current_id)
                     
                     path_spans = []
@@ -83,15 +82,17 @@ def render_results(bus_db):
                     
                 st.markdown("---")
 
-    # 수집된 모든 스크롤 대상을 한 번에 제어하는 통합 자바스크립트 실행
+    # 💡 핵심 스크롤 로직: 화면 전체를 흔들지 않고 가로 스크롤만 중앙 정렬 후, 메인 윈도우는 최상단으로 강제 이동
     if scroll_targets:
         js_lines = []
         for target_id in scroll_targets:
             safe_var = target_id.replace('-', '_')
             js_lines.append(f"""
                 var {safe_var} = window.parent.document.getElementById('{target_id}');
-                if ({safe_var}) {{
-                    {safe_var}.scrollIntoView({{behavior: 'smooth', block: 'nearest', inline: 'center'}});
+                if ({safe_var} && {safe_var}.parentNode) {{
+                    var parent = {safe_var}.parentNode;
+                    var scrollPos = {safe_var}.offsetLeft - (parent.clientWidth / 2) + ({safe_var}.clientWidth / 2);
+                    parent.scrollTo({{left: scrollPos, behavior: 'smooth'}});
                 }}
             """)
         
@@ -100,8 +101,8 @@ def render_results(bus_db):
         <script>
             setTimeout(function() {{
                 {combined_js}
+                window.parent.scrollTo({{top: 0, behavior: 'smooth'}});
             }}, 600);
         </script>
         """
-        # components.html을 사용하여 부모 DOM에 확실하게 접근
         components.html(final_script, height=0, width=0)
