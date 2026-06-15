@@ -17,6 +17,12 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# 지도의 실시간 중심 좌표 및 줌 레벨 상태 관리를 위한 세션 초기화
+if "map_center" not in st.session_state:
+    st.session_state["map_center"] = [35.1800, 128.1076]
+if "zoom_level" not in st.session_state:
+    st.session_state["zoom_level"] = 12
+
 @st.cache_data
 def load_bus_data():
     with open('bus_data.json', 'r', encoding='utf-8') as f:
@@ -50,7 +56,24 @@ options = ["선택 안함"] + filtered_nodes
 st.sidebar.markdown("**경로 찾기 (2개 선택 시 공통 버스 조회)**")
 ref_index_1 = options.index(default_ref) if default_ref in options else 0
 ref_name_1 = st.sidebar.selectbox("목표 정류장 1:", options, index=ref_index_1)
+
+# 목표 정류장 1의 위치로 즉시 지도를 이동 및 확대하는 버튼 기능
+if ref_name_1 != "선택 안함":
+    if st.sidebar.button("🔍 목표 1 지도에서 찾기", key="find_loc_1", use_container_width=True):
+        node_data = next((s for bus in bus_db.values() for r in bus.values() for s in r if s['nodenm'] == ref_name_1), None)
+        if node_data:
+            st.session_state["map_center"] = [float(node_data['gpslati']), float(node_data['gpslong'])]
+            st.session_state["zoom_level"] = 15
+
 ref_name_2 = st.sidebar.selectbox("목표 정류장 2:", options, index=0)
+
+# 목표 정류장 2의 위치로 즉시 지도를 이동 및 확대하는 버튼 기능
+if ref_name_2 != "선택 안함":
+    if st.sidebar.button("🔍 목표 2 지도에서 찾기", key="find_loc_2", use_container_width=True):
+        node_data = next((s for bus in bus_db.values() for r in bus.values() for s in r if s['nodenm'] == ref_name_2), None)
+        if node_data:
+            st.session_state["map_center"] = [float(node_data['gpslati']), float(node_data['gpslong'])]
+            st.session_state["zoom_level"] = 15
 
 st.sidebar.markdown("---")
 admin_mode = st.sidebar.checkbox("⚙️ 관리자 모드: 모든 정류소 표시", value=False)
@@ -61,26 +84,26 @@ col1, col2 = st.columns([4, 1])
 with col2:
     if st.button("🔄 새로고침"):
         fetch_locations_cached.clear()
+        st.session_state["zoom_level"] = 12
+        st.session_state["map_center"] = [35.1800, 128.1076]
 
 
-# --- 3. 경로 탐색 (교집합) 로직 ---
-target_buses = manual_target_buses # 기본은 수동 입력 버스
+# --- 3. 경로 탐색 및 교집합 필터 로직 ---
+target_buses = manual_target_buses
 common_buses = []
 
 if ref_name_1 != "선택 안함" and ref_name_2 != "선택 안함":
     buses_1 = set(find_buses_at_node(bus_db, ref_name_1))
     buses_2 = set(find_buses_at_node(bus_db, ref_name_2))
     common_buses = sorted(list(buses_1.intersection(buses_2)), key=lambda x: str(x))
-    target_buses = common_buses # 두 정류장을 선택하면 해당 버스들만 조회하도록 오버라이드
+    target_buses = common_buses
 
 
 # --- 4. 데이터 로드 및 지도 렌더링 ---
-map_center = [35.1800, 128.1076]
-m = folium.Map(location=map_center, zoom_start=12, tiles="CartoDB positron")
+m = folium.Map(location=st.session_state["map_center"], zoom_start=st.session_state["zoom_level"], tiles="CartoDB positron")
 
-bounds = [] # 지도를 정류장에 맞게 자동 축소/확대하기 위한 리스트
+bounds = []
 
-# 첫 번째 정류장 마커
 if ref_name_1 != "선택 안함":
     ref_node_1 = next((s for bus in bus_db.values() for r in bus.values() for s in r if s['nodenm'] == ref_name_1), None)
     if ref_node_1:
@@ -88,7 +111,6 @@ if ref_name_1 != "선택 안함":
         folium.Marker(location=[lat, lon], icon=folium.Icon(color='red', icon='flag', prefix='fa'), tooltip=ref_name_1).add_to(m)
         bounds.append([lat, lon])
 
-# 두 번째 정류장 마커
 if ref_name_2 != "선택 안함":
     ref_node_2 = next((s for bus in bus_db.values() for r in bus.values() for s in r if s['nodenm'] == ref_name_2), None)
     if ref_node_2:
@@ -96,14 +118,18 @@ if ref_name_2 != "선택 안함":
         folium.Marker(location=[lat, lon], icon=folium.Icon(color='blue', icon='flag', prefix='fa'), tooltip=ref_name_2).add_to(m)
         bounds.append([lat, lon])
 
-# 두 정류장이 모두 선택되었다면 두 곳이 모두 보이도록 지도 시점 자동 조절
-if len(bounds) == 2:
-    m.fit_bounds(bounds, padding=(30, 30))
-elif len(bounds) == 1:
-    m.location = bounds[0]
-    m.zoom_start = 14
+# 정류장 선택 변경이 감지되었을 때 가독성을 위해 지도 시점 최적화 처리
+if bounds and "last_bounds" not in st.session_state or st.session_state.get("last_bounds") != bounds:
+    st.session_state["last_bounds"] = bounds
+    if len(bounds) == 2:
+        m.fit_bounds(bounds, padding=(30, 30))
+    elif len(bounds) == 1:
+        st.session_state["map_center"] = bounds[0]
+        st.session_state["zoom_level"] = 14
+        m.location = bounds[0]
+        m.zoom_start = 14
 
-# 관리자 모드: 진주시 전체 정류소 표시
+# 관리자 모드: 진주시 전역 정류소를 가벼운 도트 그림과 이름 글자 레이어로 밀착 인쇄 표출
 if admin_mode:
     unique_stations = {}
     for b_data in bus_db.values():
@@ -113,19 +139,24 @@ if admin_mode:
     
     for name, coords in unique_stations.items():
         if name not in [ref_name_1, ref_name_2]:
-            folium.CircleMarker(
-                location=coords, radius=3, color='#9ca3af', fill=True, fill_color='#cbd5e1', fill_opacity=0.6, weight=1, tooltip=name
+            html_station = f"""
+            <div style="display: flex; align-items: center; white-space: nowrap;">
+                <div style="width: 8px; height: 8px; background-color: #71717a; border-radius: 50%; border: 1.5px solid white; box-shadow: 0 0 2px rgba(0,0,0,0.3);"></div>
+                <div style="font-size: 10px; color: #3f3f46; font-weight: bold; margin-left: 4px; background-color: rgba(255,255,255,0.85); padding: 1px 4px; border-radius: 4px; border: 0.5px solid #e4e4e7;">{name}</div>
+            </div>
+            """
+            folium.Marker(
+                location=coords,
+                icon=folium.DivIcon(html=html_station, icon_anchor=(4, 4)),
+                tooltip=name
             ).add_to(m)
 
-
-# API 호출 진행
 targets = []
 for bus_no in target_buses:
     if bus_no in bus_db:
         route_id = list(bus_db[bus_no].keys())[0]
         targets.append((bus_no, route_id))
 
-# 교집합 버스가 없는 경우 방어 로직
 if ref_name_1 != "선택 안함" and ref_name_2 != "선택 안함" and not target_buses:
     st.warning(f"⚠️ '{ref_name_1}'과 '{ref_name_2}'를 모두 지나는 직행 버스가 없습니다.")
     bus_results_raw = []
@@ -186,11 +217,9 @@ st_folium(m, height=450, use_container_width=True, returned_objects=[])
 # --- 5. 하단 상세 정보 영역 ---
 with st.expander("상세 운행 노선 정보", expanded=True):
     
-    # 2개 정류장 공통 버스 안내
     if ref_name_1 != "선택 안함" and ref_name_2 != "선택 안함":
         st.markdown(f"🎯 **[{ref_name_1}] ↔ [{ref_name_2}] 직행 버스:** &nbsp;` {', '.join(common_buses) if common_buses else '없음'} `")
         st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
-    # 1개 정류장 경유 버스 안내
     elif ref_name_1 != "선택 안함":
         passing_buses = find_buses_at_node(bus_db, ref_name_1)
         st.markdown(f"📢 **[{ref_name_1}] 경유 버스:** &nbsp;` {', '.join(passing_buses)} `")
@@ -237,7 +266,6 @@ with st.expander("상세 운행 노선 정보", expanded=True):
                 """
                 st.markdown(route_html, unsafe_allow_html=True)
                 
-                # 자동 중앙 정렬 스크롤 JS
                 js_scroll = f"""
                 <script>
                     setTimeout(function() {{
