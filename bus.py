@@ -42,11 +42,17 @@ if "active_ref_2" not in st.session_state:
 if "active_buses" not in st.session_state:
     st.session_state["active_buses"] = [b.strip() for b in default_buses.split(",") if b.strip()]
 
-# 💡 통신 제어용 변수 (앱 첫 실행 시 True로 시작, 이후엔 버튼 클릭 시에만 True로 변경)
+# 통신 제어용 변수
 if "needs_fetch" not in st.session_state:
     st.session_state["needs_fetch"] = True
 if "bus_results_raw" not in st.session_state:
     st.session_state["bus_results_raw"] = []
+
+# 지도 클릭 제어용 변수
+if "map_select_mode" not in st.session_state:
+    st.session_state["map_select_mode"] = 0
+if "last_clicked_pos" not in st.session_state:
+    st.session_state["last_clicked_pos"] = None
 
 @st.cache_data
 def load_bus_data():
@@ -78,64 +84,52 @@ search_term = st.sidebar.text_input("정류장 검색어 입력:")
 all_nodes = sorted(list(set(s['nodenm'] for bus in bus_db.values() for route in bus.values() for s in route)))
 filtered_nodes = [n for n in all_nodes if search_term in n] if search_term else all_nodes
 
-options = ["선택 안함"] + filtered_nodes
+# 개선 1: 검색어와 상관없이 현재 선택된 목표를 옵션 리스트에 보호하여 초기화 방지
+safe_nodes = set(filtered_nodes)
+if st.session_state["selected_node_1"] != "선택 안함":
+    safe_nodes.add(st.session_state["selected_node_1"])
+if st.session_state["selected_node_2"] != "선택 안함":
+    safe_nodes.add(st.session_state["selected_node_2"])
+options = ["선택 안함"] + sorted(list(safe_nodes))
 
-# 관리자 모드를 위로 배치하여 아래 버튼들의 활성화 상태를 직관적으로 제어
-admin_mode = st.sidebar.checkbox("⚙️ 관리자 모드: 모든 정류소 표시", value=False)
+admin_mode = st.sidebar.checkbox("관리자 모드: 모든 정류소 표시", value=False)
 st.sidebar.markdown("---")
 
 st.sidebar.markdown("**경로 찾기 (2개 선택 시 공통 버스 조회)**")
 
 # 입력 필드 1
-idx_1 = options.index(st.session_state["selected_node_1"]) if st.session_state["selected_node_1"] in options else 0
+idx_1 = options.index(st.session_state["selected_node_1"])
 ref_name_1 = st.sidebar.selectbox("목표 정류장 1:", options, index=idx_1)
 st.session_state["selected_node_1"] = ref_name_1
 
-# 💡 관리자 모드가 선택된 상태에서만 '지도에서 찾기' 활성화
+# 개선 2: 버튼 클릭 시 '지도 선택 대기 모드'로 전환
 if admin_mode:
-    if st.sidebar.button("🔍 목표 1 지도에서 찾기", key="find_loc_1", use_container_width=True):
-        if ref_name_1 == "선택 안함" and filtered_nodes:
-            ref_name_1 = filtered_nodes[0]
-            st.session_state["selected_node_1"] = ref_name_1
-            
-        if ref_name_1 != "선택 안함":
-            coords = get_node_coords(ref_name_1)
-            if coords:
-                st.session_state["map_center"] = coords
-                st.session_state["zoom_level"] = 15
-                st.session_state["fit_bounds"] = None
-                st.rerun()
+    if st.sidebar.button("목표 1 지도에서 선택", key="find_loc_1", use_container_width=True):
+        st.session_state["map_select_mode"] = 1
+    if st.session_state.get("map_select_mode") == 1:
+        st.sidebar.caption("지도에서 목표 1로 설정할 정류장을 클릭하세요.")
 
 # 입력 필드 2
-idx_2 = options.index(st.session_state["selected_node_2"]) if st.session_state["selected_node_2"] in options else 0
+idx_2 = options.index(st.session_state["selected_node_2"])
 ref_name_2 = st.sidebar.selectbox("목표 정류장 2:", options, index=idx_2)
 st.session_state["selected_node_2"] = ref_name_2
 
-# 💡 관리자 모드가 선택된 상태에서만 '지도에서 찾기' 활성화
 if admin_mode:
-    if st.sidebar.button("🔍 목표 2 지도에서 찾기", key="find_loc_2", use_container_width=True):
-        if ref_name_2 == "선택 안함" and filtered_nodes:
-            ref_name_2 = filtered_nodes[0]
-            st.session_state["selected_node_2"] = ref_name_2
-            
-        if ref_name_2 != "선택 안함":
-            coords = get_node_coords(ref_name_2)
-            if coords:
-                st.session_state["map_center"] = coords
-                st.session_state["zoom_level"] = 15
-                st.session_state["fit_bounds"] = None
-                st.rerun()
+    if st.sidebar.button("목표 2 지도에서 선택", key="find_loc_2", use_container_width=True):
+        st.session_state["map_select_mode"] = 2
+    if st.session_state.get("map_select_mode") == 2:
+        st.sidebar.caption("지도에서 목표 2로 설정할 정류장을 클릭하세요.")
 
 st.sidebar.markdown("---")
 
-# 🚀 찐 통신 트리거 버튼 (이 버튼을 눌러야만 검색이 시작됨)
-if st.sidebar.button("🚀 목표노선 찾기 (조회)", type="primary", use_container_width=True):
+# 통신 트리거 버튼
+if st.sidebar.button("목표노선 찾기 (조회)", type="primary", use_container_width=True):
     st.session_state["active_ref_1"] = ref_name_1
     st.session_state["active_ref_2"] = ref_name_2
     st.session_state["active_buses"] = manual_target_buses
     
-    fetch_locations_cached.clear() # 캐시 비우기
-    st.session_state["needs_fetch"] = True # 통신 신호 ON
+    fetch_locations_cached.clear() 
+    st.session_state["needs_fetch"] = True 
     
     bounds_to_fit = []
     if ref_name_1 != "선택 안함":
@@ -158,19 +152,18 @@ st.sidebar.markdown("---")
 # --- 2. 최상단 새로고침 컨트롤 ---
 col1, col2 = st.columns([4, 1])
 with col2:
-    if st.button("🔄 새로고침"):
+    if st.button("새로고침"):
         fetch_locations_cached.clear()
         st.session_state["zoom_level"] = 12
         st.session_state["map_center"] = [35.1800, 128.1076]
         st.session_state["fit_bounds"] = None
-        st.session_state["needs_fetch"] = True # 통신 신호 ON
+        st.session_state["needs_fetch"] = True 
         st.rerun()
 
 
 # --- 3. 데이터 로드 및 지도 렌더링 ---
 m = folium.Map(location=st.session_state["map_center"], zoom_start=st.session_state["zoom_level"], tiles="CartoDB positron")
 
-# 깃발은 현재 UI에서 선택된(선택 변경 중인) 위치를 바로 보여줌 (통신 무관)
 if ref_name_1 != "선택 안함":
     coords_1 = get_node_coords(ref_name_1)
     if coords_1: folium.Marker(location=coords_1, icon=folium.Icon(color='red', icon='flag', prefix='fa'), tooltip=ref_name_1).add_to(m)
@@ -205,8 +198,28 @@ if admin_mode:
                 tooltip=name
             ).add_to(m)
 
+# 개선 2-1: 맵 클릭 시 대기 모드에 따라 목표 정류장 자동 업데이트
+map_data = st_folium(m, height=450, use_container_width=True, returned_objects=["last_object_clicked", "last_object_clicked_tooltip"])
 
-# --- 4. 🚀 실질적인 검색 로직 및 상태 유지 (통신 철저 제어) ---
+if map_data and map_data.get("last_object_clicked"):
+    current_click_pos = map_data["last_object_clicked"]
+    # 이전 클릭 좌표와 비교하여 새로운 클릭인지 확인
+    if current_click_pos != st.session_state.get("last_clicked_pos"):
+        st.session_state["last_clicked_pos"] = current_click_pos
+        clicked_name = map_data.get("last_object_clicked_tooltip")
+        
+        if clicked_name:
+            if st.session_state.get("map_select_mode") == 1:
+                st.session_state["selected_node_1"] = clicked_name
+                st.session_state["map_select_mode"] = 0
+                st.rerun()
+            elif st.session_state.get("map_select_mode") == 2:
+                st.session_state["selected_node_2"] = clicked_name
+                st.session_state["map_select_mode"] = 0
+                st.rerun()
+
+
+# --- 4. 실질적인 검색 로직 및 상태 유지 ---
 active_ref_1 = st.session_state["active_ref_1"]
 active_ref_2 = st.session_state["active_ref_2"]
 target_buses = st.session_state["active_buses"]
@@ -224,22 +237,18 @@ for bus_no in target_buses:
         route_id = list(bus_db[bus_no].keys())[0]
         targets.append((bus_no, route_id))
 
-# 교집합이 없을 경우
 if active_ref_1 != "선택 안함" and active_ref_2 != "선택 안함" and not target_buses:
-    st.warning(f"⚠️ '{active_ref_1}'과 '{active_ref_2}'를 모두 지나는 직행 버스가 없습니다.")
+    st.warning(f"'{active_ref_1}'과 '{active_ref_2}'를 모두 지나는 직행 버스가 없습니다.")
     st.session_state["bus_results_raw"] = []
 else:
-    # 💡 사용자가 명시적으로 통신을 지시(needs_fetch=True)했을 때만 API를 호출합니다.
     if st.session_state["needs_fetch"]:
         if targets:
-            with st.spinner("🚀 최신 위치 정보를 가져오는 중..."):
+            with st.spinner("최신 위치 정보를 가져오는 중..."):
                 st.session_state["bus_results_raw"] = fetch_locations_cached(targets, API_KEY, CITY_CODE)
         else:
             st.session_state["bus_results_raw"] = []
-        # 통신이 끝났으므로 신호를 차단하여 다음 화면 새로고침 시 무단 통신 방지
         st.session_state["needs_fetch"] = False
 
-# 항상 세션에 안전하게 저장된(캐싱된) 데이터를 바탕으로 화면을 그립니다.
 bus_results = {}
 seen_coords = {} 
 bus_results_raw = st.session_state["bus_results_raw"]
@@ -289,18 +298,16 @@ for res in bus_results_raw:
                 """
                 folium.Marker(location=[lat, lon], icon=folium.DivIcon(html=html, icon_size=(40, 40), icon_anchor=(20, 20))).add_to(m)
 
-st_folium(m, height=450, use_container_width=True, returned_objects=[])
-
 
 # --- 5. 하단 상세 정보 영역 ---
 with st.expander("상세 운행 노선 정보", expanded=True):
     
     if active_ref_1 != "선택 안함" and active_ref_2 != "선택 안함":
-        st.markdown(f"🎯 **[{active_ref_1}] ↔ [{active_ref_2}] 직행 버스:** &nbsp;` {', '.join(common_buses) if common_buses else '없음'} `")
+        st.markdown(f"**[{active_ref_1}] ↔ [{active_ref_2}] 직행 버스:** &nbsp;` {', '.join(common_buses) if common_buses else '없음'} `")
         st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
     elif active_ref_1 != "선택 안함":
         passing_buses = find_buses_at_node(bus_db, active_ref_1)
-        st.markdown(f"📢 **[{active_ref_1}] 경유 버스:** &nbsp;` {', '.join(passing_buses)} `")
+        st.markdown(f"**[{active_ref_1}] 경유 버스:** &nbsp;` {', '.join(passing_buses)} `")
         st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
         
     for bus_no in target_buses:
@@ -333,7 +340,7 @@ with st.expander("상세 운행 노선 정보", expanded=True):
                     if n_ord < curr_ord:
                         path_spans.append(f"<span style='color:#adb5bd;'>{n_name}</span>")
                     elif n_ord == curr_ord:
-                        path_spans.append(f"<span id='{current_id}' style='color:#d62728; font-weight:bold; font-size: 15px; display:inline-block;'>📍{n_name}(현재)</span>")
+                        path_spans.append(f"<span id='{current_id}' style='color:#d62728; font-weight:bold; font-size: 15px; display:inline-block;'>[현재] {n_name}</span>")
                     else:
                         path_spans.append(f"<span style='color:#212529;'>{n_name}</span>")
                 
