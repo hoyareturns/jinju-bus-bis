@@ -1,0 +1,292 @@
+:root {
+  color-scheme: light;
+  --accent: #ef4444;
+  --accent-dark: #dc2626;
+  --ink: #111827;
+  --muted: #64748b;
+  --line: #e5e7eb;
+  --panel: #ffffff;
+  --soft: #f1f5f9;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--ink);
+  background: #f8fafc;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.map-panel {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  height: 46vh;
+  min-height: 360px;
+  background: white;
+  box-shadow: 0 8px 16px rgb(15 23 42 / 12%);
+}
+
+#map {
+  width: 100%;
+  height: 100%;
+}
+
+.control-panel {
+  padding: 10px 10px 96px;
+}
+
+.targets,
+.action-row,
+.stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.target-card,
+button,
+select,
+input,
+summary {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+
+button {
+  font-weight: 700;
+}
+
+.target-card {
+  text-align: left;
+  padding: 8px 10px;
+  overflow: hidden;
+}
+
+.target-card span,
+.stats span {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.target-card strong {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  margin-top: 8px;
+  font-weight: 700;
+}
+
+.toggle-row input {
+  width: 22px;
+  height: 22px;
+  min-height: auto;
+}
+
+.selected-station,
+.direct-panel,
+.stats,
+.results {
+  margin-top: 10px;
+}
+
+.selected-station {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff7ed;
+}
+
+.selected-station span {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 800;
+}
+
+.selected-station div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.hidden {
+  display: none;
+}
+
+.direct-panel {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.direct-panel summary {
+  display: block;
+  padding: 12px;
+  border: 0;
+  border-radius: 0;
+  font-weight: 800;
+}
+
+.direct-panel label {
+  display: block;
+  padding: 0 10px 10px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.direct-panel input,
+.direct-panel select {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 0 10px;
+  background: var(--soft);
+}
+
+.action-row {
+  margin-top: 10px;
+}
+
+.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: white;
+}
+
+.stats {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.stats div {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.route-card {
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.route-card h3 {
+  margin: 0;
+  padding: 12px;
+  font-size: 17px;
+  border-bottom: 1px solid var(--line);
+}
+
+.bus-row {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.bus-row:last-child {
+  border-bottom: 0;
+}
+
+.bus-row strong {
+  display: block;
+}
+
+.bus-row span {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.leaflet-control-attribution {
+  font-size: 10px;
+}
+
+.target-flag {
+  position: relative;
+  width: 86px;
+  height: 42px;
+}
+
+.target-flag .pole {
+  position: absolute;
+  left: 8px;
+  top: 2px;
+  width: 3px;
+  height: 36px;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 25%);
+}
+
+.target-flag .label {
+  position: absolute;
+  left: 11px;
+  top: 2px;
+  color: white;
+  border-radius: 4px;
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.target-flag .name {
+  position: absolute;
+  left: 11px;
+  top: 20px;
+  max-width: 74px;
+  background: white;
+  border-radius: 6px;
+  padding: 2px 5px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 2px 5px rgb(0 0 0 / 22%);
+}
+
+.bus-marker {
+  min-width: 44px;
+  padding: 3px 6px;
+  border-radius: 8px;
+  background: white;
+  border: 2px solid currentColor;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 20%);
+}
+
+@media (min-width: 760px) {
+  .app-shell {
+    max-width: 760px;
+    margin: 0 auto;
+  }
+}
+
