@@ -64,7 +64,6 @@ def render_map(bus_db, bus_index):
                 fill_opacity=0.9,
                 weight=2,
                 tooltip=name,
-                popup=folium.Popup(safe_name, max_width=220),
             ).add_to(cluster)
 
     seen_coords = {}
