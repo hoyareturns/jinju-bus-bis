@@ -15,6 +15,7 @@ API_KEY = st.secrets["API_KEY"]
 CITY_CODE = st.secrets["CITY_CODE"]
 DEFAULT_BUSES = "10, 160, 360, 362, 363"
 DEFAULT_CENTER = [35.1800, 128.1076]
+DEFAULT_NODE_1 = "금산우체국/금산푸르지오2단지"
 
 
 st.set_page_config(page_title="진주 버스 현황", layout="centered", initial_sidebar_state="collapsed")
@@ -34,9 +35,9 @@ def init_session_state():
         "map_center": DEFAULT_CENTER,
         "zoom_level": 12,
         "target_bus_input": DEFAULT_BUSES,
-        "selected_node_1": NO_SELECTION,
+        "selected_node_1": DEFAULT_NODE_1,
         "selected_node_2": NO_SELECTION,
-        "active_ref_1": NO_SELECTION,
+        "active_ref_1": DEFAULT_NODE_1,
         "active_ref_2": NO_SELECTION,
         "active_buses": [b.strip() for b in DEFAULT_BUSES.split(",")],
         "needs_fetch": True,

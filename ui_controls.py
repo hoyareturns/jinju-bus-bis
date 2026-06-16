@@ -8,6 +8,9 @@ def _parse_bus_input(value):
 
 
 def render_controls(bus_db, bus_index, fetch_locations_cached):
+    if "pending_admin_mode" in st.session_state:
+        st.session_state["admin_mode"] = st.session_state.pop("pending_admin_mode")
+
     st.markdown("<br>", unsafe_allow_html=True)
 
     target_input = st.text_input("조회할 버스 번호(쉼표로 구분)", key="target_bus_input")
@@ -29,7 +32,7 @@ def render_controls(bus_db, bus_index, fetch_locations_cached):
     btn_text_1 = f"목표 정류장 1: {st.session_state['selected_node_1']}\n지도에서 바꾸기"
     if st.button(btn_text_1, use_container_width=True):
         st.session_state["map_select_mode"] = 1
-        st.session_state["admin_mode"] = True
+        st.session_state["pending_admin_mode"] = True
         st.rerun()
 
     st.session_state["selected_node_1"] = st.selectbox(
@@ -44,7 +47,7 @@ def render_controls(bus_db, bus_index, fetch_locations_cached):
     btn_text_2 = f"목표 정류장 2: {st.session_state['selected_node_2']}\n지도에서 바꾸기"
     if st.button(btn_text_2, use_container_width=True):
         st.session_state["map_select_mode"] = 2
-        st.session_state["admin_mode"] = True
+        st.session_state["pending_admin_mode"] = True
         st.rerun()
 
     st.session_state["selected_node_2"] = st.selectbox(
@@ -81,6 +84,6 @@ def render_controls(bus_db, bus_index, fetch_locations_cached):
             fetch_locations_cached.clear()
             st.session_state["active_buses"] = _parse_bus_input(target_input)
             st.session_state["needs_fetch"] = True
-            st.session_state["admin_mode"] = False
+            st.session_state["pending_admin_mode"] = False
             st.session_state["map_select_mode"] = 0
             st.rerun()

@@ -4,6 +4,7 @@ from io import BytesIO
 import math
 import time
 import xml.etree.ElementTree as ET
+from zoneinfo import ZoneInfo
 
 import qrcode
 import requests
@@ -44,7 +45,7 @@ def _fetch_bus_location(bus_no, route_id, api_key, city_code):
                 last_error_msg = f"API 오류({result_code}: {result_msg})"
                 continue
 
-            time_str = datetime.now().strftime("%H:%M:%S")
+            time_str = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%H:%M:%S")
             buses = []
             for item in root.findall(".//item"):
                 node_name = _text(item, "nodenm")
