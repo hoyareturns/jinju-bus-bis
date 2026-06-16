@@ -24,6 +24,12 @@ st.markdown(
     <style>
         .block-container { padding-top: 1rem; padding-bottom: 2rem; }
         div[data-testid="stMetricValue"] { font-size: 1.2rem; }
+        button p { line-height: 1.2; }
+        @media (max-width: 640px) {
+            .block-container { padding-left: 0.75rem; padding-right: 0.75rem; }
+            label, p, button, input, textarea { font-size: 0.92rem !important; }
+            div[data-testid="stMetricValue"] { font-size: 1rem; }
+        }
     </style>
     """,
     unsafe_allow_html=True,
@@ -43,6 +49,7 @@ def init_session_state():
         "needs_fetch": True,
         "bus_results_raw": [],
         "map_select_mode": 0,
+        "map_clicked_station": None,
         "last_clicked_pos": None,
         "admin_mode": False,
         "last_fetch_seconds": None,

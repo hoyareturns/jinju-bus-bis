@@ -2,6 +2,7 @@ import html
 
 import folium
 import streamlit as st
+from folium.plugins import MarkerCluster
 from streamlit_folium import st_folium
 
 from bus_utils import get_bearing
@@ -13,6 +14,7 @@ def render_map(bus_db, bus_index):
         location=st.session_state["map_center"],
         zoom_start=st.session_state["zoom_level"],
         tiles="CartoDB positron",
+        control_scale=True,
     )
 
     ref_name_1 = st.session_state["selected_node_1"]
@@ -29,8 +31,8 @@ def render_map(bus_db, bus_index):
         if coords_1:
             folium.Marker(
                 location=coords_1,
-                icon=folium.Icon(color="red"),
-                tooltip=ref_name_1,
+                icon=folium.Icon(color="red", icon="flag"),
+                tooltip=f"목표1: {ref_name_1}",
             ).add_to(m)
 
     if ref_name_2 != NO_SELECTION:
@@ -38,29 +40,32 @@ def render_map(bus_db, bus_index):
         if coords_2:
             folium.Marker(
                 location=coords_2,
-                icon=folium.Icon(color="blue"),
-                tooltip=ref_name_2,
+                icon=folium.Icon(color="blue", icon="flag"),
+                tooltip=f"목표2: {ref_name_2}",
             ).add_to(m)
 
     if st.session_state.get("admin_mode"):
+        cluster = MarkerCluster(
+            name="정류장",
+            disableClusteringAtZoom=16,
+            spiderfyOnMaxZoom=True,
+            showCoverageOnHover=False,
+        ).add_to(m)
         for name, coords in bus_index["unique_stations"].items():
             if name in [ref_name_1, ref_name_2]:
                 continue
             safe_name = html.escape(name)
-            html_station = f"""
-            <div style="display:flex;align-items:center;white-space:nowrap;">
-                <div style="width:8px;height:8px;background-color:#71717a;border-radius:50%;border:1.5px solid white;box-shadow:0 0 2px rgba(0,0,0,0.3);"></div>
-                <div style="font-size:10px;color:#3f3f46;font-weight:bold;margin-left:4px;background-color:rgba(255,255,255,0.9);padding:1px 4px;border-radius:4px;border:0.5px solid #e4e4e7;">{safe_name}</div>
-            </div>
-            """
-            folium.Marker(
+            folium.CircleMarker(
                 location=coords,
-                icon=folium.DivIcon(html=html_station, icon_anchor=(4, 4)),
+                radius=5,
+                color="#475569",
+                fill=True,
+                fill_color="#f8fafc",
+                fill_opacity=0.9,
+                weight=2,
                 tooltip=name,
-            ).add_to(m)
-
-    current_mode = st.session_state.get("map_select_mode", 0)
-    ret_objs = ["last_object_clicked", "last_object_clicked_tooltip"] if current_mode in [1, 2] else []
+                popup=folium.Popup(safe_name, max_width=220),
+            ).add_to(cluster)
 
     seen_coords = {}
     for res in st.session_state.get("bus_results_raw", []):
@@ -104,38 +109,33 @@ def render_map(bus_db, bus_index):
             safe_bus_no = html.escape(str(bus_no))
             safe_curr = html.escape(bus_status["curr"])
             marker_html = f"""
-            <div style="position:relative;width:40px;height:40px;">
-                <div style="position:absolute;left:14px;top:14px;width:14px;height:14px;background-color:{color};border-radius:50%;border:2px solid white;box-shadow:0 0 4px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10;">
+            <div style="position:relative;width:34px;height:34px;">
+                <div style="position:absolute;left:10px;top:10px;width:14px;height:14px;background-color:{color};border-radius:50%;border:2px solid white;box-shadow:0 0 4px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10;">
                     <div style="transform:rotate({bearing}deg);color:white;font-size:10px;font-weight:bold;line-height:1;">&uarr;</div>
                 </div>
-                <div style="position:absolute;bottom:30px;left:50%;transform:translateX(-50%);background-color:white;border:2px solid {color};border-radius:6px;padding:3px 6px;box-shadow:2px 2px 5px rgba(0,0,0,0.3);white-space:nowrap;z-index:5;">
-                    <div style="font-size:12px;font-weight:bold;color:{color};">{safe_bus_no}</div>
-                    <div style="font-size:10px;color:#333;font-weight:bold;">{safe_curr}</div>
+                <div style="position:absolute;bottom:25px;left:50%;transform:translateX(-50%);background-color:white;border:2px solid {color};border-radius:6px;padding:2px 5px;box-shadow:1px 1px 4px rgba(0,0,0,0.25);white-space:nowrap;z-index:5;">
+                    <div style="font-size:11px;font-weight:bold;color:{color};">{safe_bus_no}</div>
+                    <div style="font-size:9px;color:#333;font-weight:bold;max-width:95px;overflow:hidden;text-overflow:ellipsis;">{safe_curr}</div>
                 </div>
-                <div style="position:absolute;bottom:24px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid {color};z-index:4;"></div>
             </div>
             """
             folium.Marker(
                 location=[lat, lon],
-                icon=folium.DivIcon(html=marker_html, icon_size=(40, 40), icon_anchor=(20, 20)),
+                icon=folium.DivIcon(html=marker_html, icon_size=(34, 34), icon_anchor=(17, 17)),
+                tooltip=f"{bus_no} {bus_status['curr']}",
             ).add_to(m)
 
-    map_data = st_folium(m, height=400, use_container_width=True, returned_objects=ret_objs)
+    ret_objs = ["last_object_clicked", "last_object_clicked_tooltip"]
+    map_data = st_folium(m, height=360, use_container_width=True, returned_objects=ret_objs)
 
-    if current_mode in [1, 2] and map_data and map_data.get("last_object_clicked"):
-        current_click_pos = map_data["last_object_clicked"]
-        if current_click_pos != st.session_state.get("last_clicked_pos"):
-            st.session_state["last_clicked_pos"] = current_click_pos
-            clicked_name = map_data.get("last_object_clicked_tooltip")
-            if clicked_name:
+    if map_data and map_data.get("last_object_clicked"):
+        clicked_name = map_data.get("last_object_clicked_tooltip")
+        if clicked_name in bus_index["node_lookup"]:
+            current_click_pos = map_data["last_object_clicked"]
+            if current_click_pos != st.session_state.get("last_clicked_pos"):
+                st.session_state["last_clicked_pos"] = current_click_pos
+                st.session_state["map_clicked_station"] = clicked_name
                 node_coords = get_node_coords(clicked_name)
-                if current_mode == 1:
-                    st.session_state["selected_node_1"] = clicked_name
-                elif current_mode == 2:
-                    st.session_state["selected_node_2"] = clicked_name
-
                 if node_coords:
                     st.session_state["map_center"] = node_coords
-
-                st.session_state["map_select_mode"] = 0
                 st.rerun()
