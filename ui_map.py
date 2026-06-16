@@ -149,7 +149,7 @@ def render_map(bus_db, bus_index):
             ).add_to(m)
 
     ret_objs = ["last_object_clicked", "last_object_clicked_tooltip"]
-    map_data = st_folium(m, height=300, use_container_width=True, returned_objects=ret_objs)
+    map_data = st_folium(m, height=390, use_container_width=True, returned_objects=ret_objs)
 
     if map_data and map_data.get("last_object_clicked"):
         clicked_name = map_data.get("last_object_clicked_tooltip")
