@@ -26,9 +26,18 @@ st.markdown(
         div[data-testid="stMetricValue"] { font-size: 1.2rem; }
         button p { line-height: 1.2; }
         @media (max-width: 640px) {
-            .block-container { padding-left: 0.75rem; padding-right: 0.75rem; }
+            .block-container { padding: 0.45rem 0.55rem 1.25rem 0.55rem; }
             label, p, button, input, textarea { font-size: 0.92rem !important; }
+            button { min-height: 2.25rem; padding: 0.25rem 0.35rem !important; }
             div[data-testid="stMetricValue"] { font-size: 1rem; }
+            div[data-testid="stHorizontalBlock"] {
+                flex-direction: row !important;
+                gap: 0.35rem !important;
+            }
+            div[data-testid="column"] {
+                flex: 1 1 0 !important;
+                min-width: 0 !important;
+            }
         }
     </style>
     """,
@@ -79,7 +88,6 @@ bus_db = load_bus_data()
 bus_index = load_bus_index()
 
 render_sidebar()
-render_controls(bus_db, bus_index, fetch_locations_cached)
 
 if st.session_state["needs_fetch"]:
     targets = []
@@ -104,4 +112,5 @@ if st.session_state["needs_fetch"]:
     st.session_state["needs_fetch"] = False
 
 render_map(bus_db, bus_index)
+render_controls(bus_db, bus_index, fetch_locations_cached)
 render_results(bus_db, bus_index)

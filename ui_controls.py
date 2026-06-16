@@ -31,10 +31,13 @@ def render_controls(bus_db, bus_index, fetch_locations_cached):
     if "pending_admin_mode" in st.session_state:
         st.session_state["admin_mode"] = st.session_state.pop("pending_admin_mode")
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("<div style='height:0.35rem'></div>", unsafe_allow_html=True)
 
-    target_input = st.text_input("버스 번호", key="target_bus_input", help="쉼표로 여러 번호를 입력")
-    search_term = st.text_input("정류장 검색", placeholder="정류장명")
+    col_bus, col_search = st.columns(2)
+    with col_bus:
+        target_input = st.text_input("버스", key="target_bus_input", help="쉼표로 여러 번호를 입력")
+    with col_search:
+        search_term = st.text_input("정류장", placeholder="검색")
 
     all_nodes = bus_index["all_nodes"]
     filtered_nodes = [n for n in all_nodes if search_term in n] if search_term else all_nodes
@@ -48,28 +51,28 @@ def render_controls(bus_db, bus_index, fetch_locations_cached):
         safe_nodes.add(st.session_state["map_clicked_station"])
     options = [NO_SELECTION] + sorted(safe_nodes)
 
-    st.checkbox("정류장 지도 표시", key="admin_mode")
+    st.checkbox("정류장 표시", key="admin_mode")
 
     clicked_station = st.session_state.get("map_clicked_station")
     if clicked_station:
         st.caption(f"지도 선택: {clicked_station}")
         col_pick_1, col_pick_2 = st.columns(2)
         with col_pick_1:
-            if st.button("목표1로", use_container_width=True):
+            if st.button("목표 1", use_container_width=True):
                 _apply_map_station(1)
                 st.rerun()
         with col_pick_2:
-            if st.button("목표2로", use_container_width=True):
+            if st.button("목표 2", use_container_width=True):
                 _apply_map_station(2)
                 st.rerun()
 
     col_view_1, col_view_2 = st.columns(2)
     with col_view_1:
-        if st.button(f"목표1 지도: {_short_name(st.session_state['selected_node_1'])}", use_container_width=True):
+        if st.button(f"지도1 {_short_name(st.session_state['selected_node_1'])}", use_container_width=True):
             st.session_state["pending_admin_mode"] = True
             st.rerun()
     with col_view_2:
-        if st.button(f"목표2 지도: {_short_name(st.session_state['selected_node_2'])}", use_container_width=True):
+        if st.button(f"지도2 {_short_name(st.session_state['selected_node_2'])}", use_container_width=True):
             st.session_state["pending_admin_mode"] = True
             st.rerun()
 
