@@ -54,6 +54,17 @@ st.markdown(
             overflow: hidden;
             text-overflow: ellipsis;
         }
+        div[data-testid="stVerticalBlock"] > div:has(.sticky-map-anchor) {
+            display: none;
+        }
+        div[data-testid="stVerticalBlock"] > div:has(.sticky-map-anchor) + div {
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            background: #ffffff;
+            padding-bottom: 0.35rem;
+            box-shadow: 0 8px 12px rgba(15, 23, 42, 0.08);
+        }
         @media (max-width: 640px) {
             .block-container { padding: 0.45rem 0.55rem 1.25rem 0.55rem; }
             label, p, button, input, textarea { font-size: 0.92rem !important; }
@@ -70,6 +81,10 @@ st.markdown(
             .target-summary { gap: 0.3rem; }
             .target-summary > div { padding: 0.38rem 0.45rem; }
             .target-summary strong { font-size: 0.84rem; }
+            div[data-testid="stVerticalBlock"] > div:has(.sticky-map-anchor) + div {
+                margin-left: -0.1rem;
+                margin-right: -0.1rem;
+            }
         }
     </style>
     """,

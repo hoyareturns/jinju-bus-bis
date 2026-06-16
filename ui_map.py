@@ -9,7 +9,21 @@ from bus_utils import get_bearing
 from data_logic import NO_SELECTION, get_color_by_bus, get_route_id
 
 
+def _target_marker_html(label, name, color):
+    safe_label = html.escape(label)
+    safe_name = html.escape(name)
+    return f"""
+    <div style="position:relative;width:86px;height:42px;">
+        <div style="position:absolute;left:8px;top:2px;width:3px;height:36px;background:{color};box-shadow:0 1px 3px rgba(0,0,0,0.25);"></div>
+        <div style="position:absolute;left:11px;top:2px;background:{color};color:white;border-radius:4px;padding:3px 7px;font-size:11px;font-weight:800;line-height:1;box-shadow:0 2px 6px rgba(0,0,0,0.25);white-space:nowrap;">{safe_label}</div>
+        <div style="position:absolute;left:11px;top:20px;max-width:74px;background:white;color:#111827;border:2px solid {color};border-radius:6px;padding:2px 5px;font-size:10px;font-weight:700;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 5px rgba(0,0,0,0.22);">{safe_name}</div>
+    </div>
+    """
+
+
 def render_map(bus_db, bus_index):
+    st.markdown("<span class='sticky-map-anchor'></span>", unsafe_allow_html=True)
+
     m = folium.Map(
         location=st.session_state["map_center"],
         zoom_start=st.session_state["zoom_level"],
@@ -31,7 +45,11 @@ def render_map(bus_db, bus_index):
         if coords_1:
             folium.Marker(
                 location=coords_1,
-                icon=folium.Icon(color="red", icon="flag"),
+                icon=folium.DivIcon(
+                    html=_target_marker_html("목표1", ref_name_1, "#dc2626"),
+                    icon_size=(86, 42),
+                    icon_anchor=(10, 38),
+                ),
                 tooltip=f"목표1: {ref_name_1}",
             ).add_to(m)
 
@@ -40,7 +58,11 @@ def render_map(bus_db, bus_index):
         if coords_2:
             folium.Marker(
                 location=coords_2,
-                icon=folium.Icon(color="blue", icon="flag"),
+                icon=folium.DivIcon(
+                    html=_target_marker_html("목표2", ref_name_2, "#2563eb"),
+                    icon_size=(86, 42),
+                    icon_anchor=(10, 38),
+                ),
                 tooltip=f"목표2: {ref_name_2}",
             ).add_to(m)
 
@@ -125,7 +147,7 @@ def render_map(bus_db, bus_index):
             ).add_to(m)
 
     ret_objs = ["last_object_clicked", "last_object_clicked_tooltip"]
-    map_data = st_folium(m, height=360, use_container_width=True, returned_objects=ret_objs)
+    map_data = st_folium(m, height=300, use_container_width=True, returned_objects=ret_objs)
 
     if map_data and map_data.get("last_object_clicked"):
         clicked_name = map_data.get("last_object_clicked_tooltip")
