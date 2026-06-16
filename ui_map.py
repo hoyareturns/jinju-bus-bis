@@ -40,32 +40,6 @@ def render_map(bus_db, bus_index):
             return [float(node_data["gpslati"]), float(node_data["gpslong"])]
         return None
 
-    if ref_name_1 != NO_SELECTION:
-        coords_1 = get_node_coords(ref_name_1)
-        if coords_1:
-            folium.Marker(
-                location=coords_1,
-                icon=folium.DivIcon(
-                    html=_target_marker_html("목표1", ref_name_1, "#dc2626"),
-                    icon_size=(86, 42),
-                    icon_anchor=(10, 38),
-                ),
-                tooltip=f"목표1: {ref_name_1}",
-            ).add_to(m)
-
-    if ref_name_2 != NO_SELECTION:
-        coords_2 = get_node_coords(ref_name_2)
-        if coords_2:
-            folium.Marker(
-                location=coords_2,
-                icon=folium.DivIcon(
-                    html=_target_marker_html("목표2", ref_name_2, "#2563eb"),
-                    icon_size=(86, 42),
-                    icon_anchor=(10, 38),
-                ),
-                tooltip=f"목표2: {ref_name_2}",
-            ).add_to(m)
-
     if st.session_state.get("admin_mode"):
         cluster = MarkerCluster(
             name="정류장",
@@ -144,6 +118,34 @@ def render_map(bus_db, bus_index):
                 location=[lat, lon],
                 icon=folium.DivIcon(html=marker_html, icon_size=(34, 34), icon_anchor=(17, 17)),
                 tooltip=f"{bus_no} {bus_status['curr']}",
+            ).add_to(m)
+
+    if ref_name_1 != NO_SELECTION:
+        coords_1 = get_node_coords(ref_name_1)
+        if coords_1:
+            folium.Marker(
+                location=coords_1,
+                icon=folium.DivIcon(
+                    html=_target_marker_html("목표1", ref_name_1, "#dc2626"),
+                    icon_size=(86, 42),
+                    icon_anchor=(10, 38),
+                ),
+                tooltip=f"목표1: {ref_name_1}",
+                z_index_offset=1000,
+            ).add_to(m)
+
+    if ref_name_2 != NO_SELECTION:
+        coords_2 = get_node_coords(ref_name_2)
+        if coords_2:
+            folium.Marker(
+                location=coords_2,
+                icon=folium.DivIcon(
+                    html=_target_marker_html("목표2", ref_name_2, "#2563eb"),
+                    icon_size=(86, 42),
+                    icon_anchor=(10, 38),
+                ),
+                tooltip=f"목표2: {ref_name_2}",
+                z_index_offset=1000,
             ).add_to(m)
 
     ret_objs = ["last_object_clicked", "last_object_clicked_tooltip"]
