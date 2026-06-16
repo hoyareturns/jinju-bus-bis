@@ -16,7 +16,6 @@ def render_results(bus_db):
         else:
             inactive_buses_data.append((bus_no, status_msg if status_msg else "운행종료 또는 지연"))
 
-    # 통신 결과에 아예 누락된 버스 처리
     for bus_no in st.session_state["active_buses"]:
         if bus_no not in fetched_bus_nos:
             inactive_buses_data.append((bus_no, "정보 없음"))
@@ -41,7 +40,6 @@ def render_results(bus_db):
             st.markdown(f"**[{active_ref_1}] 경유 버스:** {', '.join(passing_buses)}")
             st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
 
-        # 1. 정보가 있는 버스 (위쪽 배치)
         for bus_no, buses_active, active_nodes in active_buses_data:
             st.markdown(f"<h4 style='color:#333; margin-bottom: 5px;'>[{bus_no}번] 현재 {len(buses_active)}대 운행 중</h4>", unsafe_allow_html=True)
             
@@ -78,13 +76,11 @@ def render_results(bus_db):
                 st.write("") 
             st.markdown("---")
 
-        # 2. 정보가 없는 버스 (아래쪽 배치)
         for bus_no, status in inactive_buses_data:
             st.markdown(f"**[{bus_no}번] 운행 정보 없음**")
             st.write(f"상태: {status}")
             st.markdown("---")
 
-    # 화면 최상단 강제 포커스 및 가로 스크롤 동기화
     if scroll_targets:
         js_lines = []
         for target_id in scroll_targets:

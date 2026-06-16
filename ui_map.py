@@ -17,11 +17,11 @@ def render_map(bus_db):
 
     if ref_name_1 != "선택 안함":
         coords_1 = get_node_coords(ref_name_1)
-        if coords_1: folium.Marker(location=coords_1, icon=folium.Icon(color='red', icon='flag', prefix='fa'), tooltip=ref_name_1).add_to(m)
+        if coords_1: folium.Marker(location=coords_1, icon=folium.Icon(color='red'), tooltip=ref_name_1).add_to(m)
 
     if ref_name_2 != "선택 안함":
         coords_2 = get_node_coords(ref_name_2)
-        if coords_2: folium.Marker(location=coords_2, icon=folium.Icon(color='blue', icon='flag', prefix='fa'), tooltip=ref_name_2).add_to(m)
+        if coords_2: folium.Marker(location=coords_2, icon=folium.Icon(color='blue'), tooltip=ref_name_2).add_to(m)
 
     if st.session_state.get("admin_mode"):
         unique_stations = {}
@@ -41,6 +41,8 @@ def render_map(bus_db):
                 folium.Marker(location=coords, icon=folium.DivIcon(html=html_station, icon_anchor=(4, 4)), tooltip=name).add_to(m)
 
     current_mode = st.session_state.get("map_select_mode", 0)
+    
+    # 클릭 대기 모드가 아닐 때는 어떠한 신호도 받지 않음 (로딩 차단)
     ret_objs = ["last_object_clicked", "last_object_clicked_tooltip"] if current_mode in [1, 2] else []
 
     seen_coords = {}
@@ -93,7 +95,15 @@ def render_map(bus_db):
             st.session_state["last_clicked_pos"] = current_click_pos
             clicked_name = map_data.get("last_object_clicked_tooltip")
             if clicked_name:
-                if current_mode == 1: st.session_state["selected_node_1"] = clicked_name
-                elif current_mode == 2: st.session_state["selected_node_2"] = clicked_name
+                # 선택 시 지도가 엉뚱한 곳으로 튀는 것을 방지하기 위해 클릭한 정류장으로 포커스
+                node_coords = get_node_coords(clicked_name)
+                if current_mode == 1: 
+                    st.session_state["selected_node_1"] = clicked_name
+                elif current_mode == 2: 
+                    st.session_state["selected_node_2"] = clicked_name
+                
+                if node_coords:
+                    st.session_state["map_center"] = node_coords
+                
                 st.session_state["map_select_mode"] = 0
                 st.rerun()

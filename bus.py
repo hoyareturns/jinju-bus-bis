@@ -25,6 +25,7 @@ if "needs_fetch" not in st.session_state: st.session_state["needs_fetch"] = True
 if "bus_results_raw" not in st.session_state: st.session_state["bus_results_raw"] = []
 if "map_select_mode" not in st.session_state: st.session_state["map_select_mode"] = 0
 if "last_clicked_pos" not in st.session_state: st.session_state["last_clicked_pos"] = None
+if "admin_mode" not in st.session_state: st.session_state["admin_mode"] = False
 
 @st.cache_data
 def load_bus_data():
@@ -36,11 +37,10 @@ def fetch_locations_cached(targets, api_key, city_code):
 
 bus_db = load_bus_data()
 
-# --- 화면 렌더링 파이프라인 ---
 render_sidebar()
 render_controls(bus_db, fetch_locations_cached)
 
-# 통신 로직 (입력과 지도 렌더링 사이에 위치)
+# 통신 로직
 if st.session_state["needs_fetch"]:
     targets = []
     for bus_no in st.session_state["active_buses"]:
