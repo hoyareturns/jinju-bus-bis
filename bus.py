@@ -25,6 +25,35 @@ st.markdown(
         .block-container { padding-top: 1rem; padding-bottom: 2rem; }
         div[data-testid="stMetricValue"] { font-size: 1.2rem; }
         button p { line-height: 1.2; }
+        .target-summary {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.4rem;
+            margin: 0.25rem 0 0.4rem 0;
+        }
+        .target-summary > div {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 0.45rem 0.55rem;
+            background: #ffffff;
+            min-width: 0;
+        }
+        .target-summary span {
+            display: block;
+            color: #64748b;
+            font-size: 0.78rem;
+            line-height: 1.05;
+        }
+        .target-summary strong {
+            display: block;
+            margin-top: 0.15rem;
+            color: #111827;
+            font-size: 0.9rem;
+            line-height: 1.15;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
         @media (max-width: 640px) {
             .block-container { padding: 0.45rem 0.55rem 1.25rem 0.55rem; }
             label, p, button, input, textarea { font-size: 0.92rem !important; }
@@ -38,6 +67,9 @@ st.markdown(
                 flex: 1 1 0 !important;
                 min-width: 0 !important;
             }
+            .target-summary { gap: 0.3rem; }
+            .target-summary > div { padding: 0.38rem 0.45rem; }
+            .target-summary strong { font-size: 0.84rem; }
         }
     </style>
     """,
