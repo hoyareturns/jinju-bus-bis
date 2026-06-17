@@ -28,8 +28,8 @@ body {
   position: sticky;
   top: 0;
   z-index: 10;
-  height: 46vh;
-  min-height: 360px;
+  height: 50vh;
+  min-height: 390px;
   background: white;
   box-shadow: 0 8px 16px rgb(15 23 42 / 12%);
 }
@@ -40,179 +40,86 @@ body {
 }
 
 .control-panel {
-  padding: 10px 10px 96px;
+  padding: 10px 10px 92px;
 }
 
-.targets,
-.action-row,
-.stats {
+.input-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) 104px;
   gap: 8px;
 }
 
-.target-card,
-button,
-select,
+.input-row label {
+  display: block;
+}
+
+.input-row span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 input,
-summary {
-  min-height: 44px;
+button {
+  width: 100%;
+  min-height: 46px;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel);
-  color: var(--ink);
+  border-radius: 8px;
   font: inherit;
 }
 
-button {
-  font-weight: 700;
-}
-
-.target-card {
-  text-align: left;
-  padding: 8px 10px;
-  overflow: hidden;
-}
-
-.target-card span,
-.stats span {
-  display: block;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.target-card strong {
-  display: block;
-  margin-top: 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.toggle-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 46px;
-  margin-top: 8px;
-  font-weight: 700;
-}
-
-.toggle-row input {
-  width: 22px;
-  height: 22px;
-  min-height: auto;
-}
-
-.selected-station,
-.direct-panel,
-.stats,
-.results {
-  margin-top: 10px;
-}
-
-.selected-station {
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #fff7ed;
-}
-
-.selected-station span {
-  display: block;
-  margin-bottom: 8px;
-  font-weight: 800;
-}
-
-.selected-station div {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.hidden {
-  display: none;
-}
-
-.direct-panel {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel);
-  overflow: hidden;
-}
-
-.direct-panel summary {
-  display: block;
-  padding: 12px;
-  border: 0;
-  border-radius: 0;
-  font-weight: 800;
-}
-
-.direct-panel label {
-  display: block;
-  padding: 0 10px 10px;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.direct-panel input,
-.direct-panel select {
-  display: block;
-  width: 100%;
-  margin-top: 4px;
+input {
   padding: 0 10px;
-  background: var(--soft);
+  background: var(--panel);
+  color: var(--ink);
 }
 
-.action-row {
-  margin-top: 10px;
-}
-
-.primary {
+button {
+  align-self: end;
   border-color: var(--accent);
   background: var(--accent);
   color: white;
+  font-weight: 900;
 }
 
-.stats {
+.status-row {
+  display: grid;
   grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 8px;
 }
 
-.stats div {
-  padding: 10px;
+.status-row span {
+  min-height: 36px;
+  padding: 8px 6px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--panel);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.results {
+  margin-top: 10px;
 }
 
 .route-card {
   margin-top: 10px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--panel);
   overflow: hidden;
 }
 
-.route-card h3 {
+.route-card h2 {
   margin: 0;
-  padding: 12px;
-  font-size: 17px;
+  padding: 11px 12px;
   border-bottom: 1px solid var(--line);
-}
-
-.route-notice h3 {
-  border-bottom: 0;
-  padding-bottom: 4px;
-}
-
-.route-notice .bus-row {
-  padding-top: 0;
-}
-
-.route-notice strong {
-  color: var(--accent-dark);
+  font-size: 17px;
 }
 
 .bus-row {
@@ -224,76 +131,116 @@ button {
   border-bottom: 0;
 }
 
-.bus-row strong {
+.bus-row strong,
+.bus-row span,
+.bus-row time {
   display: block;
 }
 
-.bus-row span {
-  display: block;
-  margin-top: 3px;
+.bus-row strong {
+  font-size: 16px;
+}
+
+.bus-row span,
+.bus-row time,
+.empty-status {
+  margin: 3px 0 0;
   color: var(--muted);
   font-size: 13px;
+}
+
+.empty-status {
+  padding: 12px;
 }
 
 .leaflet-control-attribution {
   font-size: 10px;
 }
 
-.target-flag {
+.landmark-marker {
   position: relative;
-  width: 86px;
+  width: 132px;
   height: 42px;
 }
 
-.target-flag .pole {
+.landmark-dot {
   position: absolute;
-  left: 8px;
-  top: 2px;
-  width: 3px;
-  height: 36px;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 25%);
+  left: 6px;
+  bottom: 4px;
+  width: 12px;
+  height: 12px;
+  border: 3px solid #334155;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 25%);
 }
 
-.target-flag .label {
+.landmark-label {
   position: absolute;
-  left: 11px;
-  top: 2px;
-  color: white;
-  border-radius: 4px;
-  padding: 3px 7px;
+  left: 18px;
+  bottom: 13px;
+  max-width: 108px;
+  padding: 4px 7px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px 8px 8px 2px;
+  background: white;
+  color: #0f172a;
   font-size: 11px;
   font-weight: 900;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.target-flag .name {
-  position: absolute;
-  left: 11px;
-  top: 20px;
-  max-width: 74px;
-  background: white;
-  border-radius: 6px;
-  padding: 2px 5px;
-  font-size: 10px;
-  font-weight: 800;
   line-height: 1.1;
-  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  box-shadow: 0 2px 5px rgb(0 0 0 / 22%);
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgb(15 23 42 / 18%);
 }
 
-.bus-marker {
-  min-width: 44px;
-  padding: 3px 6px;
-  border-radius: 8px;
+.bus-arrow-wrap {
+  position: relative;
+  width: 46px;
+  height: 46px;
+}
+
+.bus-arrow {
+  position: absolute;
+  left: 8px;
+  top: 6px;
+  width: 0;
+  height: 0;
+  border-left: 15px solid transparent;
+  border-right: 15px solid transparent;
+  border-bottom: 32px solid var(--accent-dark);
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 35%));
+  transform-origin: 50% 62%;
+}
+
+.bus-route {
+  position: absolute;
+  left: 50%;
+  top: 17px;
+  min-width: 30px;
+  padding: 1px 4px;
+  border-radius: 999px;
   background: white;
-  border: 2px solid currentColor;
-  font-size: 12px;
+  color: var(--accent-dark);
+  font-size: 11px;
   font-weight: 900;
   text-align: center;
-  box-shadow: 0 2px 6px rgb(0 0 0 / 20%);
+  transform: translateX(-50%);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 20%);
+}
+
+.bus-tooltip {
+  border: 0;
+  border-radius: 8px;
+  background: #111827;
+  color: white;
+  font-size: 11px;
+  font-weight: 800;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 24%);
+}
+
+.bus-tooltip::before {
+  display: none;
 }
 
 @media (min-width: 760px) {

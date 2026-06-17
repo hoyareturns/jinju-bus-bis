@@ -6,76 +6,35 @@
     <meta name="theme-color" content="#ef4444" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="/styles.css?v=3" />
+    <link rel="stylesheet" href="/styles.css?v=4" />
     <title>진주 버스</title>
   </head>
   <body>
     <main class="app-shell">
-      <section class="map-panel">
+      <section class="map-panel" aria-label="버스 위치 지도">
         <div id="map"></div>
       </section>
 
       <section class="control-panel">
-        <div class="targets">
-          <button class="target-card" id="target1Card">
-            <span>목표1</span>
-            <strong>로딩 중</strong>
-          </button>
-          <button class="target-card" id="target2Card">
-            <span>목표2</span>
-            <strong>선택 안 함</strong>
-          </button>
-        </div>
-
-        <label class="toggle-row">
-          <input type="checkbox" id="showStations" />
-          <span>정류장 표시</span>
-        </label>
-
-        <div class="selected-station hidden" id="selectedStationPanel">
-          <span id="selectedStationName"></span>
-          <div>
-            <button id="applyTarget1">목표1</button>
-            <button id="applyTarget2">목표2</button>
-          </div>
-        </div>
-
-        <details class="direct-panel">
-          <summary>검색/직접 선택</summary>
+        <div class="input-row">
           <label>
-            버스
-            <input id="busInput" />
+            <span>노선 번호</span>
+            <input id="busInput" inputmode="text" autocomplete="off" />
           </label>
-          <label>
-            정류장 검색
-            <input id="stationSearch" placeholder="정류장명" />
-          </label>
-          <label>
-            목표 1
-            <select id="target1Select"></select>
-          </label>
-          <label>
-            목표 2
-            <select id="target2Select"></select>
-          </label>
-        </details>
-
-        <div class="action-row">
-          <button class="primary" id="findRoutes">노선 찾기</button>
           <button id="refresh">새로고침</button>
         </div>
 
-        <div class="stats">
-          <div><span>조회</span><strong id="routeCount">-</strong></div>
-          <div><span>운행</span><strong id="vehicleCount">-</strong></div>
-          <div><span>상태</span><strong id="statusText">준비</strong></div>
+        <div class="status-row">
+          <span id="routeCount">-</span>
+          <span id="vehicleCount">-</span>
+          <span id="statusText">준비</span>
         </div>
 
-        <section class="results" id="results"></section>
+        <section class="results" id="results" aria-live="polite"></section>
       </section>
     </main>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="/app.js?v=3" type="module"></script>
+    <script src="/app.js?v=4" type="module"></script>
   </body>
 </html>

@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlparse
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
 ROOT_DIR = APP_DIR.parent
-DEFAULT_BUSES = "10, 160, 360, 362, 363"
+DEFAULT_BUSES = "10, 160, 360, 361, 363"
 DEFAULT_CENTER = [35.1800, 128.1076]
 DEFAULT_NODE_1 = "금산우체국/금산푸르지오2단지"
 
@@ -170,4 +170,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
