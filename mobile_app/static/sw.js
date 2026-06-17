@@ -1,8 +1,8 @@
-const CACHE_NAME = "jinju-bus-mobile-v4";
+const CACHE_NAME = "jinju-bus-mobile-v5";
 const APP_SHELL = [
   "/",
-  "/styles.css?v=4",
-  "/app.js?v=4",
+  "/styles.css?v=5",
+  "/app.js?v=5",
   "/manifest.webmanifest",
   "/icons/icon-192.svg",
   "/icons/icon-512.svg"

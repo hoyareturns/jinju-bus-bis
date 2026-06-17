@@ -60,15 +60,14 @@ function landmarkIcon(name) {
   });
 }
 
-function busIcon(busNo, bearing = 0) {
+function busIcon(bearing = 0) {
   return L.divIcon({
     className: "",
-    iconSize: [46, 46],
-    iconAnchor: [23, 23],
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
     html: `
       <div class="bus-arrow-wrap">
         <div class="bus-arrow" style="transform: rotate(${bearing}deg)"></div>
-        <div class="bus-route">${busNo}</div>
       </div>
     `,
   });
@@ -142,8 +141,9 @@ async function refreshLocations() {
     const payload = await fetchJson(`/api/locations?buses=${encodeURIComponent(buses.join(", "))}`);
     let vehicleCount = 0;
     const mapBounds = [];
+    const results = [...payload.results].sort((a, b) => b.buses.length - a.buses.length);
 
-    for (const result of payload.results) {
+    for (const result of results) {
       $("results").append(renderResultCard(result));
 
       for (const bus of result.buses) {
@@ -151,13 +151,13 @@ async function refreshLocations() {
         if (!bus.lat || !bus.lon) continue;
         mapBounds.push([bus.lat, bus.lon]);
         L.marker([bus.lat, bus.lon], {
-          icon: busIcon(result.busNo, bus.bearing || 0),
+          icon: busIcon(bus.bearing || 0),
           zIndexOffset: 1000,
         })
-          .bindTooltip(`${result.busNo}번 ${bus.curr}`, {
+          .bindTooltip(bus.curr, {
             permanent: true,
             direction: "top",
-            offset: [0, -21],
+            offset: [0, -12],
             className: "bus-tooltip",
           })
           .addTo(state.busLayer);
