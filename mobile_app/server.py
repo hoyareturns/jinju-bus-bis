@@ -68,6 +68,11 @@ def enrich_location_result(bus_no, buses_active, status_msg):
     route_id = get_route_id(BUS_DB, bus_no)
     route_nodes = BUS_DB.get(bus_no, {}).get(route_id, []) if route_id else []
     nodes_by_ord = {int(n["nodeord"]): n for n in route_nodes}
+    route_stops = [
+        {"ord": int(node["nodeord"]), "name": node["nodenm"]}
+        for node in route_nodes
+        if node.get("nodeord") and node.get("nodenm")
+    ]
 
     enriched = []
     for bus in buses_active:
@@ -92,7 +97,7 @@ def enrich_location_result(bus_no, buses_active, status_msg):
             item["bearing"] = 0
         enriched.append(item)
 
-    return {"busNo": bus_no, "status": status_msg, "buses": enriched}
+    return {"busNo": bus_no, "status": status_msg, "buses": enriched, "routeStops": route_stops}
 
 
 class AppHandler(SimpleHTTPRequestHandler):

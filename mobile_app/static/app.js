@@ -116,10 +116,36 @@ function renderResultCard(result) {
       <span>${bus.next ? `${bus.next} 방향` : "방향 정보 없음"}</span>
       <time>${bus.last_time || ""}</time>
     `;
+    row.append(renderRouteStrip(result.routeStops || [], bus.ord));
     card.append(row);
   }
 
   return card;
+}
+
+function renderRouteStrip(routeStops, currentOrd) {
+  const strip = document.createElement("div");
+  strip.className = "route-strip";
+
+  for (const stop of routeStops) {
+    const chip = document.createElement("span");
+    chip.className = "stop-chip";
+    chip.textContent = stop.name;
+    if (stop.ord < currentOrd) chip.classList.add("passed");
+    if (stop.ord === currentOrd) {
+      chip.classList.add("current");
+      chip.dataset.currentStop = "true";
+    }
+    strip.append(chip);
+  }
+
+  return strip;
+}
+
+function centerCurrentStops() {
+  for (const chip of document.querySelectorAll("[data-current-stop='true']")) {
+    chip.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+  }
 }
 
 async function refreshLocations() {
@@ -174,6 +200,7 @@ async function refreshLocations() {
       });
       state.map.fitBounds(mapBounds, { padding: [46, 46], maxZoom: 14 });
     }
+    setTimeout(centerCurrentStops, 0);
   } catch (error) {
     $("statusText").textContent = "오류";
     $("results").innerHTML = `<article class="route-card"><p class="empty-status">${error.message}</p></article>`;

@@ -28,8 +28,8 @@ body {
   position: sticky;
   top: 0;
   z-index: 10;
-  height: 60vh;
-  min-height: 468px;
+  height: 66vh;
+  min-height: 515px;
   background: white;
   box-shadow: 0 8px 16px rgb(15 23 42 / 12%);
 }
@@ -147,6 +147,44 @@ button {
   margin: 3px 0 0;
   color: var(--muted);
   font-size: 13px;
+}
+
+.route-strip {
+  display: flex;
+  gap: 6px;
+  margin-top: 9px;
+  padding-bottom: 3px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+.stop-chip {
+  flex: 0 0 auto;
+  max-width: 132px;
+  padding: 5px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  background: white;
+  color: #111827;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stop-chip.passed {
+  border-color: #e5e7eb;
+  background: #f3f4f6;
+  color: #9ca3af;
+}
+
+.stop-chip.current {
+  border-color: #111827;
+  background: #111827;
+  color: white;
 }
 
 .empty-status {
