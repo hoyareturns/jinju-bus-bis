@@ -223,11 +223,25 @@ button {
   color: white;
   font-size: 10px;
   font-weight: 800;
+  line-height: 1.15;
+  text-align: center;
   box-shadow: 0 1px 4px rgb(0 0 0 / 22%);
 }
 
 .bus-tooltip::before {
   display: none;
+}
+
+.bus-tooltip strong,
+.bus-tooltip span {
+  display: block;
+}
+
+.bus-tooltip span {
+  max-width: 82px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (min-width: 760px) {

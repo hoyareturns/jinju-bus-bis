@@ -154,7 +154,7 @@ async function refreshLocations() {
           icon: busIcon(bus.bearing || 0),
           zIndexOffset: 1000,
         })
-          .bindTooltip(bus.curr, {
+          .bindTooltip(`<strong>${result.busNo}번</strong><span>${bus.curr}</span>`, {
             permanent: true,
             direction: "top",
             offset: [0, -12],
