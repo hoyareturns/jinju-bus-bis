@@ -11,6 +11,7 @@ const state = {
   nodeByName: new Map(),
   landmarkLayer: L.layerGroup(),
   busLayer: L.layerGroup(),
+  requestSeq: 0,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -149,6 +150,7 @@ function centerCurrentStops() {
 }
 
 async function refreshLocations() {
+  const requestId = (state.requestSeq += 1);
   const buses = parseBusNumbers($("busInput").value);
   $("results").innerHTML = "";
   state.busLayer.clearLayers();
@@ -165,6 +167,7 @@ async function refreshLocations() {
 
   try {
     const payload = await fetchJson(`/api/locations?buses=${encodeURIComponent(buses.join(", "))}`);
+    if (requestId !== state.requestSeq) return;
     let vehicleCount = 0;
     const mapBounds = [];
     const results = [...payload.results].sort((a, b) => b.buses.length - a.buses.length);
@@ -202,6 +205,7 @@ async function refreshLocations() {
     }
     setTimeout(centerCurrentStops, 0);
   } catch (error) {
+    if (requestId !== state.requestSeq) return;
     $("statusText").textContent = "오류";
     $("results").innerHTML = `<article class="route-card"><p class="empty-status">${error.message}</p></article>`;
   }
