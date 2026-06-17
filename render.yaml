@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: jinju-bus-mobile
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: pip install -r requirements.txt
+    startCommand: python mobile_app/server.py
+    healthCheckPath: /api/bootstrap
+    envVars:
+      - key: CITY_CODE
+        value: "38030"
+      - key: API_KEY
+        sync: false
