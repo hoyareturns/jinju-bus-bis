@@ -202,6 +202,19 @@ button {
   border-bottom: 1px solid var(--line);
 }
 
+.route-notice h3 {
+  border-bottom: 0;
+  padding-bottom: 4px;
+}
+
+.route-notice .bus-row {
+  padding-top: 0;
+}
+
+.route-notice strong {
+  color: var(--accent-dark);
+}
+
 .bus-row {
   padding: 10px 12px;
   border-bottom: 1px solid var(--line);
@@ -289,4 +302,3 @@ button {
     margin: 0 auto;
   }
 }
-

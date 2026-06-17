@@ -8,6 +8,7 @@ const state = {
   selectedStation: null,
   target1: null,
   target2: "선택 안 함",
+  routeNotice: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -145,14 +146,41 @@ function colorForBus(busNo) {
   return colors[sum % colors.length];
 }
 
+function sortBusNumbers(buses) {
+  return [...buses].sort((a, b) => String(a).localeCompare(String(b), "ko", { numeric: true }));
+}
+
 async function refreshLocations() {
-  const buses = $("busInput").value;
-  $("statusText").textContent = "조회 중";
-  const payload = await fetchJson(`/api/locations?buses=${encodeURIComponent(buses)}`);
+  const buses = $("busInput").value
+    .split(",")
+    .map((bus) => bus.trim())
+    .filter(Boolean);
+
   state.busLayer.clearLayers();
+  $("results").innerHTML = "";
+  $("routeCount").textContent = String(buses.length);
+  $("vehicleCount").textContent = "0";
+
+  if (!buses.length) {
+    $("statusText").textContent = "노선 없음";
+    $("results").innerHTML = `<article class="route-card"><h3>조회할 노선 없음</h3><div class="bus-row"><span>목표 정류장을 다시 선택해 주세요.</span></div></article>`;
+    renderTargets();
+    return;
+  }
+
+  $("statusText").textContent = "조회 중";
+  if (state.routeNotice) {
+    const notice = document.createElement("article");
+    notice.className = "route-card route-notice";
+    notice.innerHTML = `
+      <h3>${state.routeNotice.title}</h3>
+      <div class="bus-row"><strong>${state.routeNotice.buses.join(", ")}</strong></div>
+    `;
+    $("results").append(notice);
+  }
+  const payload = await fetchJson(`/api/locations?buses=${encodeURIComponent(buses.join(", "))}`);
 
   let vehicleCount = 0;
-  $("results").innerHTML = "";
 
   for (const result of payload.results) {
     const card = document.createElement("article");
@@ -174,20 +202,30 @@ async function refreshLocations() {
     $("results").append(card);
   }
 
-  $("routeCount").textContent = String($("busInput").value.split(",").filter((v) => v.trim()).length);
+  $("routeCount").textContent = String(buses.length);
   $("vehicleCount").textContent = String(vehicleCount);
   $("statusText").textContent = "완료";
   renderTargets();
 }
 
 async function findRoutes() {
+  state.routeNotice = null;
   if (state.target1 && state.target2 && state.target2 !== "선택 안 함") {
     const buses1 = new Set(state.nodeByName.get(state.target1)?.buses || []);
     const buses2 = new Set(state.nodeByName.get(state.target2)?.buses || []);
-    const common = [...buses1].filter((bus) => buses2.has(bus)).sort();
-    $("busInput").value = common.join(", ");
+    const common = sortBusNumbers([...buses1].filter((bus) => buses2.has(bus)));
+    if (common.length) {
+      $("busInput").value = common.join(", ");
+      state.routeNotice = { title: `직통 노선 ${common.length}개`, buses: common };
+    } else {
+      const target2Buses = sortBusNumbers(buses2);
+      $("busInput").value = target2Buses.join(", ");
+      state.routeNotice = { title: `직통 없음 · 목표2 경유 ${target2Buses.length}개`, buses: target2Buses };
+    }
   } else if (state.target1) {
-    $("busInput").value = (state.nodeByName.get(state.target1)?.buses || []).join(", ");
+    const target1Buses = sortBusNumbers(state.nodeByName.get(state.target1)?.buses || []);
+    $("busInput").value = target1Buses.join(", ");
+    state.routeNotice = { title: `목표1 경유 ${target1Buses.length}개`, buses: target1Buses };
   }
   await refreshLocations();
 }
@@ -228,4 +266,3 @@ if ("serviceWorker" in navigator) {
 }
 
 boot();
-

@@ -1,4 +1,4 @@
-const CACHE_NAME = "jinju-bus-mobile-v1";
+const CACHE_NAME = "jinju-bus-mobile-v2";
 const APP_SHELL = [
   "/",
   "/styles.css",
@@ -32,4 +32,3 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
-
