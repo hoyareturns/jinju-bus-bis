@@ -1,8 +1,8 @@
-const CACHE_NAME = "jinju-bus-mobile-v2";
+const CACHE_NAME = "jinju-bus-mobile-v3";
 const APP_SHELL = [
   "/",
-  "/styles.css",
-  "/app.js",
+  "/styles.css?v=3",
+  "/app.js?v=3",
   "/manifest.webmanifest",
   "/icons/icon-192.svg",
   "/icons/icon-512.svg"
@@ -27,8 +27,12 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.startsWith("/api/")) return;
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return cached || fetch(event.request);
-    })
+    fetch(event.request)
+      .then((response) => {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
