@@ -1,0 +1,4 @@
+# Copy to local.properties. Never commit the real key or the copied file.
+sdk.dir=D\:/CodexBuildTools/jinju-bus-20260911/sdk
+TAGO_API_KEY=
+JINJU_OFFLINE_MAP_DIR=D\:/CodexBuildTools/jinju-bus-20260911/offline-map
