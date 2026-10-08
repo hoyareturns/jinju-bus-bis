@@ -1,177 +1,271 @@
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+"""Portable same-origin web/API host. Run: python -m mobile_app.server."""
+from dataclasses import dataclass
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import mimetypes
 import os
 from pathlib import Path
+import re
 import sys
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlsplit
 
+if __package__ in (None, ''):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from mobile_app.service import BusService
+from mobile_app.tago import TagoClient, TagoError
 
 APP_DIR = Path(__file__).resolve().parent
-STATIC_DIR = APP_DIR / "static"
-ROOT_DIR = APP_DIR.parent
-DEFAULT_BUSES = "10, 160, 360, 361, 363"
-DEFAULT_CENTER = [35.1800, 128.1076]
-DEFAULT_NODE_1 = "금산우체국/금산푸르지오2단지"
-
-sys.path.insert(0, str(ROOT_DIR))
-
-from bus_utils import get_all_bus_locations_sync  # noqa: E402
-from data_logic import build_bus_index, get_route_id  # noqa: E402
+STATIC_DIR = APP_DIR / 'static'
+VERSION = '2.1.0'
+BUS_PATTERN = re.compile(r'[0-9A-Za-z가-힣-]{1,16}')
 
 
-def load_bus_data():
-    with (ROOT_DIR / "bus_data.json").open("r", encoding="utf-8") as f:
-        return json.load(f)
+@dataclass(frozen=True)
+class Config:
+    base_path: str = '/apps/bus/'
+    hub_path: str = '/'
+    api_key: str = ''
+    city_code: str = '38030'
+    public_origin: str = ''
+
+    def __post_init__(self):
+        base = self.base_path
+        if not re.fullmatch(r'/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]*', base):
+            raise ValueError('BUS_BASE_PATH must be / or a slash-separated URL path')
+        hub = urlsplit(self.hub_path)
+        if (not self.hub_path or hub.scheme or hub.netloc or '\\' in self.hub_path
+                or '%' in self.hub_path or any(ord(c) < 32 for c in self.hub_path)
+                or self.hub_path.startswith('//')):
+            raise ValueError('HUB_PATH must be a same-origin relative URL path')
+        if not self.city_code.isdigit():
+            raise ValueError('CITY_CODE must be numeric')
+        object.__setattr__(self, 'base_path', base.rstrip('/') + '/')
+        if self.public_origin:
+            origin = urlsplit(self.public_origin)
+            if origin.scheme != 'https' or not origin.hostname or origin.path or origin.query or origin.fragment or origin.username:
+                raise ValueError('BUS_PUBLIC_ORIGIN must be an HTTPS origin without a path')
+
+    @classmethod
+    def from_env(cls):
+        return cls(base_path=os.environ.get('BUS_BASE_PATH', '/apps/bus/'),
+                   hub_path=os.environ.get('HUB_PATH', '/'),
+                   api_key=os.environ.get('TAGO_API_KEY', os.environ.get('API_KEY', '')).strip(),
+                   city_code=os.environ.get('CITY_CODE', '38030'),
+                   public_origin=os.environ.get('BUS_PUBLIC_ORIGIN', '').rstrip('/'))
 
 
-BUS_DB = load_bus_data()
-BUS_INDEX = build_bus_index(BUS_DB)
+def parse_buses(query):
+    params = parse_qs(query, keep_blank_values=True, max_num_fields=10)
+    values = params.get('buses', ['10'])
+    if len(values) != 1 or set(params) - {'buses'}:
+        raise ValueError('buses 파라미터 하나만 사용할 수 있습니다.')
+    buses = list(dict.fromkeys(bus.strip() for bus in values[0].split(',') if bus.strip()))
+    if len(buses) > 10 or any(not BUS_PATTERN.fullmatch(bus) for bus in buses):
+        raise ValueError('노선은 16자 이내의 번호로 최대 10개까지 조회할 수 있습니다.')
+    return buses
 
 
-def get_config_value(name):
-    value = os.environ.get(name)
-    if value:
-        return value
+def create_server(config=None, host='127.0.0.1', port=8765, service=None, alert_manager=None):
+    config = config or Config.from_env()
+    database = json.loads((APP_DIR.parent / 'bus_data.json').read_text(encoding='utf-8'))
+    service = service or BusService(TagoClient(config.api_key, config.city_code) if config.api_key else None, database)
+    base = config.base_path
 
-    secrets_path = ROOT_DIR / ".streamlit" / "secrets.toml"
-    if not secrets_path.exists():
-        return None
+    class Handler(BaseHTTPRequestHandler):
+        server_version = 'JinjuBus'
 
-    prefix = f"{name} ="
-    for raw_line in secrets_path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if line.startswith(prefix):
-            return line.split("=", 1)[1].strip().strip('"').strip("'")
-    return None
+        def log_message(self, *_args):
+            # Do not log query strings, credentials, headers, or upstream URLs.
+            pass
 
+        def respond(self, status, body, content_type='application/json; charset=utf-8', extra=None):
+            if isinstance(body, (dict, list)):
+                body = json.dumps(body, ensure_ascii=False, allow_nan=False).encode('utf-8')
+            elif isinstance(body, str):
+                body = body.encode('utf-8')
+            self.send_response(status)
+            self.send_header('Content-Type', content_type)
+            self.send_header('Content-Length', str(len(body)))
+            self.send_header('Cache-Control', 'no-store' if content_type.startswith('application/json') else 'no-cache')
+            self.send_header('X-Content-Type-Options', 'nosniff')
+            self.send_header('Referrer-Policy', 'strict-origin-when-cross-origin')
+            for key, value in (extra or {}).items():
+                self.send_header(key, value)
+            self.end_headers()
+            if self.command != 'HEAD':
+                try:
+                    self.wfile.write(body)
+                except ConnectionError:
+                    pass
 
-def node_payload(name):
-    node = BUS_INDEX["node_lookup"].get(name)
-    if not node:
-        return None
-    return {
-        "name": name,
-        "lat": float(node["gpslati"]),
-        "lon": float(node["gpslong"]),
-        "buses": sorted(BUS_INDEX["node_to_buses"].get(name, []), key=str),
-    }
+        def do_HEAD(self):
+            self.do_GET()
 
-
-def calc_bearing(lat1, lon1, lat2, lon2):
-    from bus_utils import get_bearing
-
-    return get_bearing(lat1, lon1, lat2, lon2)
-
-
-def enrich_location_result(bus_no, buses_active, status_msg):
-    route_id = get_route_id(BUS_DB, bus_no)
-    route_nodes = BUS_DB.get(bus_no, {}).get(route_id, []) if route_id else []
-    nodes_by_ord = {int(n["nodeord"]): n for n in route_nodes}
-    route_stops = [
-        {"ord": int(node["nodeord"]), "name": node["nodenm"]}
-        for node in route_nodes
-        if node.get("nodeord") and node.get("nodenm")
-    ]
-
-    enriched = []
-    for bus in buses_active:
-        curr_ord = bus["ord"]
-        curr_node = nodes_by_ord.get(curr_ord)
-        next_node = nodes_by_ord.get(curr_ord + 1)
-        item = dict(bus)
-        if curr_node:
-            item["lat"] = float(curr_node["gpslati"])
-            item["lon"] = float(curr_node["gpslong"])
-        if next_node:
-            item["next"] = next_node["nodenm"]
-            if curr_node:
-                item["bearing"] = calc_bearing(
-                    float(curr_node["gpslati"]),
-                    float(curr_node["gpslong"]),
-                    float(next_node["gpslati"]),
-                    float(next_node["gpslong"]),
-                )
-        else:
-            item["next"] = "운행 종료"
-            item["bearing"] = 0
-        enriched.append(item)
-
-    return {"busNo": bus_no, "status": status_msg, "buses": enriched, "routeStops": route_stops}
-
-
-class AppHandler(SimpleHTTPRequestHandler):
-    def translate_path(self, path):
-        parsed = urlparse(path)
-        request_path = parsed.path
-        if request_path == "/":
-            request_path = "/index.html"
-        return str(STATIC_DIR / request_path.lstrip("/"))
-
-    def end_headers(self):
-        self.send_header("Cache-Control", "no-cache")
-        super().end_headers()
-
-    def send_json(self, payload, status=200):
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def do_GET(self):
-        parsed = urlparse(self.path)
-        if parsed.path == "/api/bootstrap":
-            nodes = [node_payload(name) for name in BUS_INDEX["all_nodes"]]
-            self.send_json(
-                {
-                    "defaultBuses": DEFAULT_BUSES,
-                    "defaultCenter": DEFAULT_CENTER,
-                    "defaultNode1": DEFAULT_NODE_1,
-                    "nodes": [n for n in nodes if n],
-                }
-            )
-            return
-
-        if parsed.path == "/api/locations":
-            api_key = get_config_value("API_KEY")
-            city_code = get_config_value("CITY_CODE")
-            if not api_key or not city_code:
-                self.send_json({"error": "API_KEY 또는 CITY_CODE가 설정되지 않았습니다."}, status=500)
+        def alert_request(self, relative, mutation=False):
+            manager = self.server.alert_manager
+            if not manager:
+                self.respond(503, {'error': '서버 알림이 준비되지 않았습니다.'})
                 return
-
-            params = parse_qs(parsed.query)
-            bus_numbers = [
-                b.strip()
-                for b in params.get("buses", [DEFAULT_BUSES])[0].split(",")
-                if b.strip()
-            ]
-            targets = []
-            missing = []
-            for bus_no in bus_numbers:
-                route_id = get_route_id(BUS_DB, bus_no)
-                if route_id:
-                    targets.append((bus_no, route_id))
+            try:
+                incoming = None
+                if self.command == 'POST':
+                    length = int(self.headers.get('Content-Length', '0'))
+                    if not 1 <= length <= 65536 or self.headers.get('Transfer-Encoding'):
+                        raise ValueError('알림 요청 크기가 올바르지 않습니다.')
+                    self.connection.settimeout(10)
+                    incoming = self.rfile.read(length)
+                if mutation:
+                    expected = config.public_origin or f'http://127.0.0.1:{self.server.server_port}'
+                    allowed = {expected}
+                    if not config.public_origin:
+                        allowed.add(f'http://localhost:{self.server.server_port}')
+                    if self.headers.get('Origin') not in allowed:
+                        self.respond(403, {'error': '같은 앱 화면에서 요청해 주세요.'})
+                        return
+                auth = self.headers.get('Authorization', '')
+                token = auth[7:] if auth.startswith('Bearer ') else ''
+                if self.command == 'POST':
+                    if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
+                        raise ValueError('JSON 요청이 필요합니다.')
+                    payload = json.loads(incoming)
+                    if not isinstance(payload, dict):
+                        raise ValueError('알림 설정이 올바르지 않습니다.')
+                    if relative == 'api/alerts/session':
+                        self.respond(201, {'token': manager.create_client()})
+                    elif relative == 'api/alerts':
+                        self.respond(200, manager.save(token, payload))
+                    else:
+                        self.respond(404, {'error': '알림 경로를 찾을 수 없습니다.'})
+                elif self.command == 'DELETE' and relative.startswith('api/alerts/'):
+                    manager.delete(token, relative[len('api/alerts/'):])
+                    self.respond(200, {'deleted': True})
+                elif self.command in ('GET', 'HEAD') and relative == 'api/alerts':
+                    self.respond(200, manager.get(token))
                 else:
-                    missing.append({"busNo": bus_no, "status": "노선 정보 없음", "buses": []})
+                    self.respond(404, {'error': '알림 경로를 찾을 수 없습니다.'})
+            except PermissionError:
+                self.respond(401, {'error': '이 브라우저의 알림 설정을 확인해 주세요.'})
+            except (ValueError, KeyError, TypeError):
+                self.respond(400, {'error': '알림 설정 또는 구독 정보를 확인해 주세요.'})
+            except TagoError as error:
+                self.respond(503, {'error': str(error)})
+            except TimeoutError:
+                self.respond(408, {'error': '알림 요청 시간이 초과되었습니다.'})
 
-            raw_results = get_all_bus_locations_sync(targets, api_key, city_code) if targets else []
-            results = [enrich_location_result(*row) for row in raw_results]
-            self.send_json({"results": results + missing})
-            return
+        def do_POST(self):
+            path = urlsplit(self.path).path
+            if not path.startswith(base + 'api/alerts'):
+                self.respond(404, {'error': '알림 경로를 찾을 수 없습니다.'})
+                return
+            self.alert_request(path[len(base):], mutation=True)
 
-        if parsed.path.endswith(".webmanifest"):
-            mimetypes.add_type("application/manifest+json", ".webmanifest")
-        return super().do_GET()
+        do_DELETE = do_POST
+
+        def do_GET(self):
+            if len(self.path) > 2048:
+                self.respond(414, {'error': '요청 주소가 너무 깁니다.'})
+                return
+            parsed = urlsplit(self.path)
+            path = unquote(parsed.path)
+            if base != '/' and path == base.rstrip('/'):
+                self.respond(308, b'', extra={'Location': base})
+                return
+            if not path.startswith(base):
+                self.respond(404, {'error': '이 앱의 경로가 아닙니다.'})
+                return
+            relative = path[len(base):]
+            if relative == 'api/push/config':
+                manager = self.server.alert_manager
+                self.respond(200, manager.config() if manager else {'available': False, 'publicKey': '', 'reason': '서버 알림이 준비되지 않았습니다.'})
+                return
+            if relative == 'api/alerts':
+                self.alert_request(relative)
+                return
+            if '\\' in relative or any(p in ('.', '..') for p in relative.split('/')):
+                self.respond(404, {'error': '파일을 찾을 수 없습니다.'})
+                return
+            if relative == 'api/bootstrap':
+                self.respond(200, {'name': '진주 버스', 'version': VERSION, 'basePath': base,
+                    'hubPath': config.hub_path, 'defaultBuses': ['10'], 'defaultCenter': [35.18, 128.1076],
+                    'refreshSeconds': 15, 'apiConfigured': bool(config.api_key), 'storageMode': 'device',
+                    'authentication': 'anonymous', 'accountSync': False,
+                    'availableBuses': sorted(database, key=lambda value: (len(value), value))})
+                return
+            if relative == 'api/health':
+                self.respond(200, {'status': 'ok', 'version': VERSION, 'apiConfigured': bool(config.api_key),
+                    'upstreamVerified': False, 'basePath': base})
+                return
+            if relative in ('api/v2/locations', 'api/v2/routes'):
+                try:
+                    buses = parse_buses(parsed.query)
+                    if buses and not config.api_key:
+                        self.respond(503, {'error': '실시간 조회를 사용하려면 서버에 TAGO_API_KEY를 설정해 주세요.', 'code': 'CONFIG'})
+                        return
+                    result = service.locations(buses) if relative.endswith('/locations') else service.routes(buses)
+                    self.respond(200, result)
+                except ValueError as error:
+                    self.respond(400, {'error': str(error)})
+                except TagoError as error:
+                    self.respond(503, {'error': str(error), 'code': error.code}, extra={'Retry-After': '15'})
+                return
+            if relative in ('manifest.webmanifest', 'app-manifest.json'):
+                source = STATIC_DIR / relative
+                if not source.exists():
+                    self.respond(404, {'error': '연동 자료가 준비되지 않았습니다.'})
+                    return
+                data = json.loads(source.read_text(encoding='utf-8'))
+                if relative == 'app-manifest.json':
+                    data.update(launchPath=base, banner=base+'assets/banner.svg', icon=base+'assets/icon.svg',
+                        healthPath=base+'api/health', version=VERSION)
+                else:
+                    data.update(id=base, start_url=base, scope=base)
+                    for icon in data['icons']:
+                        icon['src'] = base + 'assets/icon.svg'
+                self.respond(200, data, 'application/manifest+json; charset=utf-8' if relative.endswith('webmanifest') else 'application/json; charset=utf-8')
+                return
+            if relative.startswith('api/'):
+                self.respond(404, {'error': '지원하지 않는 API입니다.'})
+                return
+            filename = relative or 'index.html'
+            allowed = {'index.html', 'app.js', 'state.mjs', 'stops.mjs', 'alarm-panel.mjs', 'styles.css', 'sw.js', 'worker-policy.js'}
+            candidate = (STATIC_DIR / filename).resolve()
+            if (filename not in allowed and not filename.startswith(('assets/', 'vendor/'))
+                    or not candidate.is_relative_to(STATIC_DIR.resolve()) or not candidate.is_file()):
+                self.respond(404, {'error': '파일을 찾을 수 없습니다.'})
+                return
+            mime = {'.mjs': 'text/javascript', '.js': 'text/javascript', '.svg': 'image/svg+xml'}.get(candidate.suffix)
+            mime = mime or mimetypes.guess_type(str(candidate))[0] or 'application/octet-stream'
+            extra = {'Service-Worker-Allowed': base} if filename == 'sw.js' else None
+            self.respond(200, candidate.read_bytes(), mime, extra)
+
+    server = ThreadingHTTPServer((host, port), Handler)
+    server.bus_service = service
+    server.alert_manager = alert_manager
+    return server
 
 
 def main():
-    port = int(os.environ.get("PORT", "8765"))
-    server = ThreadingHTTPServer(("0.0.0.0", port), AppHandler)
-    print(f"Mobile app server: http://localhost:{port}")
-    server.serve_forever()
+    config = Config.from_env()
+    host, port = os.environ.get('HOST', '127.0.0.1'), int(os.environ.get('PORT', '8765'))
+    server = create_server(config, host, port)
+    from mobile_app.alerts import AlertManager
+    manager = AlertManager(Path(os.environ.get('BUS_DATA_DIR', str(APP_DIR / '.state'))) / 'alerts.sqlite3',
+        server.bus_service, public_key=os.environ.get('VAPID_PUBLIC_KEY', ''),
+        private_key=os.environ.get('VAPID_PRIVATE_KEY', ''), subject=os.environ.get('VAPID_SUBJECT', ''),
+        base_path=config.base_path)
+    server.alert_manager = manager
+    manager.start()
+    print(f'Jinju Bus {VERSION}: http://{host}:{port}{config.base_path}', flush=True)
+    print('Live API configured: ' + ('yes' if config.api_key else 'no'), flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        manager.stop()
+        server.server_close()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

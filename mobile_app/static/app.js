@@ -1,233 +1,34 @@
-const LANDMARKS = [
-  "금산우체국/금산푸르지오2단지",
-  "선학사거리/제일여자고등학교",
-  "경상대(가좌)",
-  "중앙시장(주차장)",
-  "경남서부보훈지청",
-];
-
-const state = {
-  map: null,
-  nodeByName: new Map(),
-  landmarkLayer: L.layerGroup(),
-  busLayer: L.layerGroup(),
-  requestSeq: 0,
-};
-
-const $ = (id) => document.getElementById(id);
-
-async function fetchJson(url) {
-  const res = await fetch(url);
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `HTTP ${res.status}`);
-  }
-  return res.json();
+import {readSelection,mergeLocations,restoreSnapshot,previous} from './state.mjs';
+import {directionGroups,vehicleProgress} from './stops.mjs';
+import {AlarmPanel} from './alarm-panel.mjs';
+const $=id=>document.getElementById(id),base=new URL('./',location.href),key=`jinju-bus:v2:${base.pathname}:`;
+const load=name=>{try{return localStorage.getItem(key+name);}catch{return null;}};
+const save=(name,value)=>{try{localStorage.setItem(key+name,JSON.stringify(value));}catch{$('notice').hidden=false;$('notice').textContent='기기 저장을 사용할 수 없습니다.';}};
+let selected=readSelection(load('selection')),active=selected[0]||'',routes=restoreSnapshot(load('snapshot'),selected),topologies=[],directions={},busy=false,again=false,controller;
+const alarm=new AlarmPanel(base,key,()=>selected,()=>topologies);
+function text(tag,value,className){const el=document.createElement(tag);el.textContent=value;if(className)el.className=className;return el;}
+function render(){
+ $('routeCount').textContent=selected.length;$('selectedRoutes').replaceChildren();for(const bus of selected){const chip=document.createElement('div');chip.className='bus-chip'+(bus===active?' active':'');const button=text('button',bus+'번');button.setAttribute('aria-pressed',String(bus===active));button.onclick=()=>{active=bus;render();};const remove=text('button','×','remove-bus');remove.setAttribute('aria-label',bus+'번 등록 해제');remove.onclick=async()=>{remove.disabled=true;try{await alarm.removeBus(bus);controller?.abort();selected=selected.filter(b=>b!==bus);save('selection',selected);if(active===bus)active=selected[0]||'';routes=routes.filter(r=>selected.includes(r.busNo));topologies=topologies.filter(r=>selected.includes(r.busNo));render();refresh();}catch(e){$('inputMessage').textContent=e.message;remove.disabled=false;}};chip.append(button,remove);$('selectedRoutes').append(chip);}
+ const groups=directionGroups(topologies.filter(r=>r.busNo===active));let group=groups.find(g=>g.id===directions[active]);if(!group){group=groups.find(g=>g.routes.some(r=>routes.some(l=>l.routeId===r.routeId&&l.vehicles.length)))||groups[0];if(group)directions[active]=group.id;}
+ const selector=$('viewDirection');selector.replaceChildren(...groups.map(g=>new Option(g.label,g.id)));if(!groups.length)selector.append(new Option(selected.length?'정류소 정보 조회 중':'버스를 등록해 주세요',''));selector.disabled=!groups.length;if(group)selector.value=group.id;
+ $('routeHeading').textContent=active?`${active}번 전체 정류소`:'전체 정류소';$('stopList').replaceChildren();$('vehicleSummary').replaceChildren();const live=group?routes.filter(r=>group.routes.some(t=>t.routeId===r.routeId)):[];const vehicles=live.flatMap(r=>r.vehicles.map(v=>({vehicle:v,route:r,progress:vehicleProgress(v,group.routes.find(t=>t.routeId===r.routeId).stops)})));
+ $('vehicleCount').textContent=`${vehicles.length}대 조회`;$('routeEmpty').textContent=group?'':selected.length?'정류소 정보를 불러오고 있습니다.':'버스번호를 등록하면 전체 정류소가 표시됩니다.';
+ for(const item of vehicles){const card=document.createElement('div');card.className='vehicle-card'+(item.route.stale?' stale':'');card.append(text('strong',`${item.vehicle.vehicleNo||'버스'} ${item.route.stale?'· 이전 정보':''}`),text('p',item.progress?.current.name||item.vehicle.nodeName||'현재 정류소 확인 중'),text('small',item.progress?(item.progress.next?'다음 → '+item.progress.next.name:'마지막 정류소'):'다음 정류소 확인 불가'));$('vehicleSummary').append(card);}
+ if(group&&!vehicles.length)$('vehicleSummary').append(text('p','현재 조회된 버스가 없습니다. 전체 경유 정류소를 확인하세요.','empty-status'));
+ $('stopHint').textContent=group?`${group.stops.length}개 정류소 · ${group.label}${group.routes.length>1?' · 일부 운행은 경유 정류소가 다릅니다.':''}${group.stale?' · 정류소 목록은 이전 정보입니다.':''}`:'';
+ for(const [i,stop] of (group?.stops||[]).entries()){const here=vehicles.filter(item=>item.progress&&stop.targets.some(t=>t.routeId===item.route.routeId&&t.nodeOrd===item.progress.current.nodeOrd));const li=document.createElement('li');li.className='stop-row'+(here.length?' is-current':'');li.append(text('span',String(i+1),'stop-number'));const content=document.createElement('div');content.append(text('strong',stop.name));if(stop.targets.length<group.routes.length)content.append(text('small','일부 운행 경유','branch-note'));for(const item of here){const badge=text('span',`${item.route.stale?'이전':'현재'} · ${item.vehicle.vehicleNo||'버스'}${item.progress.next?' → '+item.progress.next.name:' · 종점'}`,'bus-at-stop');content.append(badge);}li.append(content);$('stopList').append(li);}
+ alarm.update();alarm.check(routes);
 }
-
-function parseBusNumbers(value) {
-  return value
-    .split(",")
-    .map((bus) => bus.trim())
-    .filter(Boolean);
-}
-
-function shortName(name, limit = 12) {
-  if (!name) return "";
-  return name.length <= limit ? name : `${name.slice(0, limit)}...`;
-}
-
-function initMap(center) {
-  state.map = L.map("map", { zoomControl: true }).setView(center, 12);
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-    maxZoom: 19,
-  }).addTo(state.map);
-  state.landmarkLayer.addTo(state.map);
-  state.busLayer.addTo(state.map);
-}
-
-function landmarkIcon(name) {
-  return L.divIcon({
-    className: "",
-    iconSize: [132, 42],
-    iconAnchor: [11, 35],
-    html: `
-      <div class="landmark-marker">
-        <span class="landmark-dot"></span>
-        <span class="landmark-label">${shortName(name, 13)}</span>
-      </div>
-    `,
-  });
-}
-
-function busIcon(bearing = 0) {
-  return L.divIcon({
-    className: "",
-    iconSize: [18, 18],
-    iconAnchor: [9, 9],
-    html: `
-      <div class="bus-arrow-wrap">
-        <div class="bus-arrow" style="transform: rotate(${bearing}deg)"></div>
-      </div>
-    `,
-  });
-}
-
-function renderLandmarks() {
-  state.landmarkLayer.clearLayers();
-  const bounds = [];
-
-  for (const name of LANDMARKS) {
-    const node = state.nodeByName.get(name);
-    if (!node) continue;
-    bounds.push([node.lat, node.lon]);
-    L.marker([node.lat, node.lon], {
-      icon: landmarkIcon(name),
-      zIndexOffset: 700,
-    }).addTo(state.landmarkLayer);
-  }
-
-  if (bounds.length) {
-    state.map.fitBounds(bounds, { padding: [42, 42], maxZoom: 13 });
-  }
-}
-
-function renderResultCard(result) {
-  const card = document.createElement("article");
-  card.className = "route-card";
-
-  const title = document.createElement("h2");
-  title.textContent = `${result.busNo}번`;
-  card.append(title);
-
-  if (!result.buses.length) {
-    const empty = document.createElement("p");
-    empty.className = "empty-status";
-    empty.textContent = result.status;
-    card.append(empty);
-    return card;
-  }
-
-  for (const bus of result.buses) {
-    const row = document.createElement("div");
-    row.className = "bus-row";
-    row.innerHTML = `
-      <strong>${bus.curr}</strong>
-      <span>${bus.next ? `${bus.next} 방향` : "방향 정보 없음"}</span>
-      <time>${bus.last_time || ""}</time>
-    `;
-    row.append(renderRouteStrip(result.routeStops || [], bus.ord));
-    card.append(row);
-  }
-
-  return card;
-}
-
-function renderRouteStrip(routeStops, currentOrd) {
-  const strip = document.createElement("div");
-  strip.className = "route-strip";
-
-  for (const stop of routeStops) {
-    const chip = document.createElement("span");
-    chip.className = "stop-chip";
-    chip.textContent = stop.name;
-    if (stop.ord < currentOrd) chip.classList.add("passed");
-    if (stop.ord === currentOrd) {
-      chip.classList.add("current");
-      chip.dataset.currentStop = "true";
-    }
-    strip.append(chip);
-  }
-
-  return strip;
-}
-
-function centerCurrentStops() {
-  for (const chip of document.querySelectorAll("[data-current-stop='true']")) {
-    chip.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
-  }
-}
-
-async function refreshLocations() {
-  const requestId = (state.requestSeq += 1);
-  const buses = parseBusNumbers($("busInput").value);
-  $("results").innerHTML = "";
-  state.busLayer.clearLayers();
-  $("routeCount").textContent = `노선 ${buses.length}`;
-  $("vehicleCount").textContent = "버스 0";
-
-  if (!buses.length) {
-    $("statusText").textContent = "노선 없음";
-    $("results").innerHTML = `<article class="route-card"><p class="empty-status">조회할 노선 번호를 입력하세요.</p></article>`;
-    return;
-  }
-
-  $("statusText").textContent = "조회 중";
-
-  try {
-    const payload = await fetchJson(`/api/locations?buses=${encodeURIComponent(buses.join(", "))}`);
-    if (requestId !== state.requestSeq) return;
-    let vehicleCount = 0;
-    const mapBounds = [];
-    const results = [...payload.results].sort((a, b) => b.buses.length - a.buses.length);
-
-    for (const result of results) {
-      $("results").append(renderResultCard(result));
-
-      for (const bus of result.buses) {
-        vehicleCount += 1;
-        if (!bus.lat || !bus.lon) continue;
-        mapBounds.push([bus.lat, bus.lon]);
-        L.marker([bus.lat, bus.lon], {
-          icon: busIcon(bus.bearing || 0),
-          zIndexOffset: 1000,
-        })
-          .bindTooltip(`<strong>${result.busNo}번</strong><span>${bus.curr}</span>`, {
-            permanent: true,
-            direction: "top",
-            offset: [0, -12],
-            className: "bus-tooltip",
-          })
-          .addTo(state.busLayer);
-      }
-    }
-
-    $("vehicleCount").textContent = `버스 ${vehicleCount}`;
-    $("statusText").textContent = "완료";
-
-    if (mapBounds.length) {
-      LANDMARKS.forEach((name) => {
-        const node = state.nodeByName.get(name);
-        if (node) mapBounds.push([node.lat, node.lon]);
-      });
-      state.map.fitBounds(mapBounds, { padding: [46, 46], maxZoom: 14 });
-    }
-    setTimeout(centerCurrentStops, 0);
-  } catch (error) {
-    if (requestId !== state.requestSeq) return;
-    $("statusText").textContent = "오류";
-    $("results").innerHTML = `<article class="route-card"><p class="empty-status">${error.message}</p></article>`;
-  }
-}
-
-async function boot() {
-  const bootstrap = await fetchJson("/api/bootstrap");
-  state.nodeByName = new Map(bootstrap.nodes.map((node) => [node.name, node]));
-  $("busInput").value = bootstrap.defaultBuses;
-
-  initMap(bootstrap.defaultCenter);
-  renderLandmarks();
-  await refreshLocations();
-}
-
-$("refresh").addEventListener("click", refreshLocations);
-$("busInput").addEventListener("keydown", (event) => {
-  if (event.key === "Enter") refreshLocations();
-});
-
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js").catch(() => {});
-}
-
-boot();
+$('viewDirection').onchange=()=>{directions[active]=$('viewDirection').value;render();};
+$('addForm').onsubmit=e=>{e.preventDefault();const bus=$('busInput').value.trim();if(!/^[0-9A-Za-z가-힣-]{1,16}$/.test(bus)){$('inputMessage').textContent='올바른 버스번호를 입력해 주세요.';return;}if(selected.includes(bus)){active=bus;render();return;}if(selected.length>=10){$('inputMessage').textContent='버스는 최대 10개까지 등록할 수 있습니다.';return;}controller?.abort();selected.push(bus);active=bus;save('selection',selected);$('busInput').value='';$('inputMessage').textContent='';render();refresh();};
+async function api(path,buses){const response=await fetch(new URL(path+'?buses='+encodeURIComponent(buses.join(',')),base),{signal:AbortSignal.any([controller.signal,AbortSignal.timeout(35000)])});const payload=await response.json();if(!response.ok)throw Error(payload.error||'조회에 실패했습니다.');return payload;}
+async function refresh(){if(busy){again=true;return;}if(document.hidden)return;busy=true;controller=new AbortController();$('refresh').disabled=true;$('statusText').textContent='현재 정류소 조회 중';const buses=[...selected];try{
+ if(!buses.length){routes=[];topologies=[];render();return;}
+ const missing=buses.filter(b=>!topologies.some(r=>r.busNo===b)||topologies.filter(r=>r.busNo===b).some(r=>r.stale||Date.now()-r.loadedAt>3600000));
+ if(missing.length){const data=await api('api/v2/routes',missing);controller.signal.throwIfAborted();topologies=topologies.filter(r=>!missing.includes(r.busNo)).concat(data.routes.map(r=>({...r,loadedAt:Date.now()}))).filter(r=>selected.includes(r.busNo));render();}
+ if(document.hidden)return;const payload=await api('api/v2/locations',buses);controller.signal.throwIfAborted();if(document.hidden)return;routes=mergeLocations(routes,payload,selected);save('snapshot',routes);const errors=payload.errors||[];$('notice').hidden=!errors.length;$('notice').textContent=errors.map(e=>`${e.busNo||''}번: ${e.message}`).join(' · ');$('statusText').textContent=errors.length||routes.some(r=>r.stale)?'일부 정보 확인 필요':'실시간 정류소 조회';$('connectionDot').classList.toggle('warning',errors.length>0||routes.some(r=>r.stale));$('lastUpdate').textContent=new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',second:'2-digit'})+' 조회 · 15초 간격';render();
+ }catch(e){if(controller.signal.aborted)return;routes=routes.map(r=>previous(r));$('notice').hidden=false;$('notice').textContent=e.message;$('statusText').textContent='연결 확인 필요';$('connectionDot').classList.add('warning');render();}finally{busy=false;$('refresh').disabled=false;if(!selected.length)$('statusText').textContent='버스를 등록해 주세요';if(again){again=false;refresh();}}}
+$('refresh').onclick=refresh;document.addEventListener('visibilitychange',()=>{if(document.hidden)controller?.abort();else refresh();});
+async function init(){render();try{const response=await fetch(new URL('api/bootstrap',base));const config=await response.json();$('busOptions').replaceChildren(...config.availableBuses.map(b=>new Option(b,b)));$('hubLink').href=new URL(config.hubPath,base).href;$('hubLink').hidden=false;}catch{$('notice').textContent='서버에 연결하지 못했습니다.';$('notice').hidden=false;}
+ if('serviceWorker'in navigator&&window.isSecureContext)navigator.serviceWorker.register(new URL('sw.js',base),{scope:base.pathname}).catch(()=>{$('pushHelp').textContent='앱 알림을 준비하지 못했습니다. 다시 열어 주세요.';});refresh();setInterval(refresh,15000);}
+init();

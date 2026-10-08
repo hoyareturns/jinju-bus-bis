@@ -1,42 +1,18 @@
-# 진주 버스 모바일 앱(PWA)
+# 진주 버스 WEB APP 2.1
 
-휴대폰에서 앱처럼 설치해서 쓰기 위한 모바일 전용 PWA입니다.
+지도 없이 **전체 정류소 → 현재 정류소 → 다음 정류소**를 보여주는 휴대폰용 웹 앱입니다. Android APK 소스는 `android-v2/`에 별도로 유지됩니다.
 
-## 실행
-
-PowerShell에서 프로젝트 루트 기준:
+- 등록한 버스 → 해당 방향 → 경유 정류소 순서의 알림 설정
+- 여러 알림(최대 20개), 기본 **매일 07:00–07:30**, 요일·시간 개별 지정
+- 시간 구간마다 첫 도착 한 번. 화면 알림과 서버 Web Push 지원
+- 현재 로컬 실행에서는 서버 푸시 키가 없어 화면 알림을 사용할 수 있습니다.
 
 ```powershell
-$env:API_KEY="공공데이터포털_서비스키"
-$env:CITY_CODE="38030"
-python mobile_app/server.py
+python -m pip install -r mobile_app/requirements.txt
+# TAGO_API_KEY를 실행 환경의 비밀값으로 설정
+python -m mobile_app.server
 ```
 
-브라우저에서 `http://localhost:8765`로 접속합니다.
+접속: http://127.0.0.1:8765/apps/bus/
 
-## 휴대폰 설치
-
-실제 휴대폰에서 앱처럼 설치하려면 HTTPS 주소가 필요합니다. 배포 후 삼성 인터넷/Chrome에서 접속한 뒤:
-
-- Chrome: 메뉴 > 앱 설치 또는 홈 화면에 추가
-- Samsung Internet: 메뉴 > 현재 페이지 추가 > 홈 화면
-
-## Render 배포
-
-저장소 루트의 `render.yaml`을 사용하면 Render에서 모바일 앱 서버를 바로 만들 수 있습니다.
-
-1. Render Dashboard에서 New > Blueprint를 선택합니다.
-2. `hoyareturns/jinju-bus-bis` 저장소를 연결합니다.
-3. `API_KEY` 입력칸에 공공데이터포털 서비스키를 넣습니다.
-4. 배포가 끝나면 `https://...onrender.com` 주소로 접속합니다.
-
-`CITY_CODE`는 진주시 코드 `38030`으로 자동 설정됩니다. `API_KEY`는 저장소에 커밋하지 않고 Render 환경변수로만 등록합니다.
-
-## 구조
-
-- `server.py`: 정적 파일 제공 및 버스 위치 API 프록시
-- `static/index.html`: 모바일 앱 화면
-- `static/styles.css`: 모바일 UI
-- `static/app.js`: 지도/정류장/노선 조회 로직
-- `static/manifest.webmanifest`: 설치형 앱 설정
-- `static/sw.js`: 앱 셸 캐시용 서비스 워커
+[운영·알림·ZERIONA 연동 안내](HANDOFF.md) · [검증 결과](VERIFICATION.md)

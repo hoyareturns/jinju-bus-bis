@@ -1,14 +1,19 @@
+# Free plan sleeps and has no persistent alarm storage; use this for foreground viewing only.
 services:
   - type: web
     name: jinju-bus-mobile
     runtime: python
     plan: free
     region: singapore
-    buildCommand: pip install -r requirements.txt
-    startCommand: python mobile_app/server.py
-    healthCheckPath: /api/bootstrap
+    buildCommand: pip install -r mobile_app/requirements.txt
+    startCommand: python -m mobile_app.server
+    healthCheckPath: /apps/bus/api/health
     envVars:
       - key: CITY_CODE
         value: "38030"
-      - key: API_KEY
+      - key: BUS_BASE_PATH
+        value: "/apps/bus/"
+      - key: HOST
+        value: "0.0.0.0"
+      - key: TAGO_API_KEY
         sync: false

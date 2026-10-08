@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="진주 버스 아이콘">
+<defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#205f57"/><stop offset="1" stop-color="#123e43"/></linearGradient></defs>
+<rect width="512" height="512" rx="116" fill="url(#bg)"/>
+<path d="M-20 385Q150 255 270 379T550 351" fill="none" stroke="#42877a" stroke-width="35"/>
+<circle cx="383" cy="127" r="34" fill="#d8e49f"/>
+<rect x="132" y="112" width="248" height="266" rx="62" fill="#f5f7e9"/>
+<rect x="157" y="167" width="198" height="103" rx="24" fill="#286e65"/>
+<path d="M174 189h89" stroke="#92b5a2" stroke-width="12" stroke-linecap="round"/>
+<rect x="203" y="134" width="106" height="13" rx="6.5" fill="#286e65"/>
+<circle cx="184" cy="320" r="19" fill="#d4a657"/><circle cx="328" cy="320" r="19" fill="#d4a657"/>
+<rect x="158" y="356" width="42" height="50" rx="15" fill="#f5f7e9"/><rect x="312" y="356" width="42" height="50" rx="15" fill="#f5f7e9"/>
+<path d="M241 320h30" stroke="#286e65" stroke-width="10" stroke-linecap="round"/>
+</svg>

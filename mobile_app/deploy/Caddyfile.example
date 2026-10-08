@@ -1,0 +1,12 @@
+# TEMPLATE ONLY: merge this route into the future shared ZERIONA proxy.
+# Preserve the /apps/bus/ prefix. Do NOT use handle_path.
+# This local-only example does not configure an external domain.
+http://localhost {
+    redir /apps/bus /apps/bus/ 308
+    handle /apps/bus/* {
+        reverse_proxy bus:8765
+    }
+    handle {
+        reverse_proxy zeriona:3000
+    }
+}

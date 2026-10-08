@@ -1,25 +1,19 @@
 {
+  "id": "/apps/bus/",
   "name": "진주 버스",
   "short_name": "진주버스",
-  "description": "진주 버스 위치와 목표 정류장 확인",
-  "start_url": "/",
+  "description": "진주 버스 전체 정류소, 현재 정류소와 진행 방향, 시간대별 도착 알림",
+  "start_url": "/apps/bus/",
+  "scope": "/apps/bus/",
   "display": "standalone",
-  "background_color": "#f8fafc",
-  "theme_color": "#ef4444",
-  "orientation": "portrait",
+  "background_color": "#f6f7f2",
+  "theme_color": "#123f43",
   "icons": [
     {
-      "src": "/icons/icon-192.svg",
-      "sizes": "192x192",
+      "src": "/apps/bus/assets/icon.svg",
+      "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icons/icon-512.svg",
-      "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }
-

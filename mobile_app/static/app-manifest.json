@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "jinju-bus",
+  "name": "진주 버스",
+  "summary": "전체 정류소와 버스 진행 방향을 확인하고 시간대별 도착 알림을 설정하세요.",
+  "category": "생활 도구",
+  "launchPath": "/apps/bus/",
+  "banner": "/apps/bus/assets/banner.svg",
+  "icon": "/apps/bus/assets/icon.svg",
+  "version": "2.1.0",
+  "healthPath": "/apps/bus/api/health",
+  "access": "anonymous",
+  "storageMode": "device",
+  "accountSync": false,
+  "demoData": false,
+  "availability": "requires-server-configuration"
+}

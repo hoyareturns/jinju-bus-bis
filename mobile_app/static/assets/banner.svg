@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-label="진주의 강과 도로 위 버스를 표현한 일러스트">
+<defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#edf3e6"/><stop offset="1" stop-color="#d9e9df"/></linearGradient><linearGradient id="bus" x2="1" y2="1"><stop stop-color="#2b7c65"/><stop offset="1" stop-color="#13494b"/></linearGradient><filter id="shadow" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#254d3d" flood-opacity=".14"/></filter></defs>
+<rect width="1600" height="900" fill="url(#bg)"/>
+<circle cx="800" cy="438" r="321" fill="#f7f8eb" opacity=".65"/>
+<path d="M-70 210Q235 110 368 340T802 697T1280 641T1680 735" fill="none" stroke="#97c6bc" stroke-width="130"/>
+<path d="M-70 210Q235 110 368 340T802 697T1280 641T1680 735" fill="none" stroke="#bcddd0" stroke-width="88"/>
+<g fill="none" stroke="#fcfdf7" stroke-width="23"><path d="M70 630 535 219 1190 394 1470 143"/><path d="M202 858 609 492 1530 356"/><path d="m1075 90-196 330 145 421"/><path d="M110 82 541 469 394 847"/></g>
+<g fill="#bfd3b8"><rect x="245" y="173" width="110" height="60" rx="20" transform="rotate(34 300 200)"/><rect x="1129" y="451" width="136" height="76" rx="20" transform="rotate(-10 1200 490)"/><circle cx="1320" cy="200" r="37"/><circle cx="1280" cy="244" r="24"/><circle cx="316" cy="647" r="32"/><circle cx="278" cy="684" r="22"/></g>
+<path d="m554 617 64-78 183-69 226-78" fill="none" stroke="#d2a250" stroke-width="10" stroke-linecap="round" stroke-dasharray="1 26"/>
+<g fill="#fffaf0" stroke="#d2a250" stroke-width="7"><circle cx="554" cy="617" r="15"/><circle cx="1027" cy="392" r="15"/></g>
+<g filter="url(#shadow)"><rect x="654" y="229" width="292" height="365" rx="66" fill="url(#bus)"/><rect x="679" y="294" width="242" height="148" rx="28" fill="#eaf2de"/><path d="M704 323h94" stroke="#b8d8c4" stroke-width="15" stroke-linecap="round"/><rect x="753" y="257" width="94" height="15" rx="7" fill="#d5e9b1"/><circle cx="713" cy="508" r="21" fill="#e3bd71"/><circle cx="887" cy="508" r="21" fill="#e3bd71"/><path d="M777 510h46" stroke="#91bfa9" stroke-width="12" stroke-linecap="round"/><rect x="685" y="567" width="49" height="61" rx="16" fill="#143e41"/><rect x="866" y="567" width="49" height="61" rx="16" fill="#143e41"/></g>
+<g transform="translate(997 232)"><circle r="52" fill="#fcfbee"/><path d="M0-25c-18 0-27 12-27 27 0 20 27 40 27 40S27 22 27 2c0-15-9-27-27-27Z" fill="#ce9e4d"/><circle cy="1" r="9" fill="#fcfbee"/></g>
+</svg>

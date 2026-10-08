@@ -20,3 +20,6 @@ mobile_app/__pycache__/
 *.jks
 .env
 .env.*
+!mobile_app/.env.example
+mobile_app/.state/
+.venv-web/
